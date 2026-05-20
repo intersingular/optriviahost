@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { ref, set, get } from "firebase/database";
-import { ref as sref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref as sref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { db, storage } from "./firebase";
 
 /* ═══════════════════════════════════════════
@@ -410,28 +410,52 @@ function ImagePicker({label,value,onChange}){
   const[showUrl,setShowUrl]=useState(false);
   const[urlInput,setUrlInput]=useState("");
   const[uploading,setUploading]=useState(false);
+  const[uploadProgress,setUploadProgress]=useState(0);
   const[uploadError,setUploadError]=useState("");
   const fileRef=useRef(null);
+  const uploadTaskRef=useRef(null);
+
+  function friendlyStorageError(err){
+    const code=err?.code||"";
+    if(code.includes("unauthorized")||code.includes("permission")) return "Permission denied. Open Firebase Console → Storage → Rules and allow writes (for testing: allow read, write: if true;).";
+    if(code.includes("bucket")||code.includes("not-found")) return "Storage bucket not found. Open Firebase Console → Storage → Get Started to enable Cloud Storage (requires Blaze plan).";
+    if(code.includes("retry-limit")||code.includes("unknown")||code.includes("network")) return "Upload could not reach Firebase Storage. Likely Storage isn't enabled for this project, or your network is blocking the request. Try the Giphy or URL options.";
+    if(code.includes("quota")) return "Storage quota exceeded.";
+    if(code.includes("canceled")) return "Upload canceled.";
+    return err?.message||err?.code||"Unknown error";
+  }
 
   async function handleUpload(e){
     const file=e.target.files?.[0];if(!file)return;
-    if(file.size>10*1024*1024){setUploadError("File too large (max 10MB)");return;}
-    setUploading(true);setUploadError("");
+    if(file.size>10*1024*1024){setUploadError("File too large (max 10MB)");if(fileRef.current)fileRef.current.value="";return;}
+    setUploading(true);setUploadProgress(0);setUploadError("");
+    let cleared=false;
+    const finish=()=>{if(cleared)return;cleared=true;setUploading(false);setUploadProgress(0);uploadTaskRef.current=null;if(fileRef.current)fileRef.current.value="";};
     try{
       const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
       const path=`trivia-images/${Date.now()}-${safe}`;
       const fileRef2=sref(storage,path);
-      await uploadBytes(fileRef2,file);
+      const task=uploadBytesResumable(fileRef2,file);
+      uploadTaskRef.current=task;
+      // Hard timeout: if no progress for 45s after start, assume Storage isn't reachable
+      const timeoutId=setTimeout(()=>{try{task.cancel()}catch{};console.warn("Upload timeout — Firebase Storage likely not enabled.");},45000);
+      await new Promise((resolve,reject)=>{
+        task.on("state_changed",
+          snap=>{const pct=snap.totalBytes?Math.round((snap.bytesTransferred/snap.totalBytes)*100):0;setUploadProgress(pct);},
+          err=>{clearTimeout(timeoutId);reject(err);},
+          ()=>{clearTimeout(timeoutId);resolve();}
+        );
+      });
       const url=await getDownloadURL(fileRef2);
       onChange(url);
+      finish();
     }catch(err){
-      console.error(err);
-      setUploadError("Upload failed: "+(err.message||err.code||"unknown")+". Enable Firebase Storage in your project, or use Giphy / URL instead.");
-    }finally{
-      setUploading(false);
-      if(fileRef.current) fileRef.current.value="";
+      console.error("Storage upload error:",err);
+      setUploadError("Upload failed — "+friendlyStorageError(err));
+      finish();
     }
   }
+  function cancelUpload(){try{uploadTaskRef.current?.cancel()}catch{}}
 
   const smBtn={fontSize:11,padding:"6px 10px",borderRadius:8,fontFamily:font,fontWeight:600,cursor:"pointer",border:`1px solid ${T.cb}`,background:"#1a1a3e",color:T.txt,transition:"all .15s"};
 
@@ -452,10 +476,11 @@ function ImagePicker({label,value,onChange}){
           </div>
         </div>
       ):(
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          <button onClick={()=>setShowGiphy(true)} style={smBtn}>🎞 Search Giphy</button>
-          <button onClick={()=>setShowUrl(s=>!s)} style={smBtn}>🔗 Paste URL</button>
-          <button onClick={()=>fileRef.current?.click()} disabled={uploading} style={{...smBtn,opacity:uploading?.6:1}}>{uploading?"Uploading…":"📁 Upload"}</button>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+          <button onClick={()=>setShowGiphy(true)} style={smBtn} disabled={uploading}>🎞 Search Giphy</button>
+          <button onClick={()=>setShowUrl(s=>!s)} style={smBtn} disabled={uploading}>🔗 Paste URL</button>
+          <button onClick={()=>fileRef.current?.click()} disabled={uploading} style={{...smBtn,opacity:uploading?.6:1}}>{uploading?`Uploading ${uploadProgress}%…`:"📁 Upload"}</button>
+          {uploading&&<button onClick={cancelUpload} style={{...smBtn,color:T.pink,borderColor:`${T.pink}66`}}>Cancel</button>}
         </div>
       )}
       {showUrl&&!value&&(
