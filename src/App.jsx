@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { ref, set, get } from "firebase/database";
-import { db } from "./firebase";
+import { ref as sref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "./firebase";
 
 /* ═══════════════════════════════════════════
    ALINA'S TRIVIA — Full Game Platform
@@ -95,10 +96,13 @@ function fuzzyMatch(guess, correct) {
 function scoreAnswer(question, playerAnswer) {
   if (!playerAnswer) return 0;
   if (question.type === "music") {
+    // Music requires strict normalized equality on artist and song title
     const ans = typeof playerAnswer === "object" ? playerAnswer : {};
     let pts = 0;
-    if (fuzzyMatch(ans.artist || "", question.artist || "")) pts++;
-    if (fuzzyMatch(ans.songTitle || "", question.songTitle || "")) pts++;
+    const a = normalize(ans.artist || ""), tA = normalize(question.artist || "");
+    const s = normalize(ans.songTitle || ""), tS = normalize(question.songTitle || "");
+    if (a && tA && a === tA) pts++;
+    if (s && tS && s === tS) pts++;
     return pts;
   }
   if (question.type === "choice") return normalize(playerAnswer) === normalize(question.answer) ? 1 : 0;
@@ -313,13 +317,142 @@ function Btn({children,onClick,variant="primary",style,disabled}){
   return <button onClick={onClick} disabled={disabled} style={{...bBtn,background:bg,border:bdr,color:clr,opacity:disabled?.5:1,...style}}>{children}</button>;
 }
 
-function Inp({value,onChange,placeholder,style,type="text",multiline}){
+function Inp({value,onChange,placeholder,style,type="text",multiline,onKeyDown,autoFocus}){
   const sh={fontFamily:font,fontSize:15,color:T.txt,background:"#0d0d25",border:`1px solid ${T.cb}`,borderRadius:12,padding:"12px 16px",width:"100%",outline:"none",boxSizing:"border-box",transition:"border-color .2s"};
-  if(multiline)return <textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} rows={3} style={{...sh,resize:"vertical",...style}}/>;
-  return <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{...sh,...style}}/>;
+  if(multiline)return <textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} rows={3} onKeyDown={onKeyDown} autoFocus={autoFocus} style={{...sh,resize:"vertical",...style}}/>;
+  return <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} onKeyDown={onKeyDown} autoFocus={autoFocus} style={{...sh,...style}}/>;
 }
 
 const globalCSS=`@import url('https://fonts.googleapis.com/css2?family=Righteous&family=Quicksand:wght@400;600;700&display=swap');*{box-sizing:border-box}`;
+
+// ─── Giphy + Image Picker ────────────────
+function GiphyPicker({onPick,onClose}){
+  const[apiKey,setApiKey]=useState(()=>{try{return localStorage.getItem("triviahost:giphyKey")||""}catch{return""}});
+  const[keyInput,setKeyInput]=useState("");
+  const[query,setQuery]=useState("");
+  const[results,setResults]=useState([]);
+  const[loading,setLoading]=useState(false);
+  const[error,setError]=useState("");
+
+  async function search(q){
+    if(!apiKey||!q.trim())return;
+    setLoading(true);setError("");
+    try{
+      const r=await fetch(`https://api.giphy.com/v1/gifs/search?api_key=${encodeURIComponent(apiKey)}&q=${encodeURIComponent(q)}&limit=24&rating=g`);
+      const j=await r.json();
+      if(j.meta?.status!==200){setError(j.meta?.msg||"Search failed — check your API key");setResults([]);}
+      else setResults(j.data||[]);
+    }catch(e){setError("Network error: "+e.message);}
+    finally{setLoading(false);}
+  }
+  function saveKey(){const v=keyInput.trim();if(!v)return;try{localStorage.setItem("triviahost:giphyKey",v)}catch{}setApiKey(v);setKeyInput("");}
+  function clearKey(){try{localStorage.removeItem("triviahost:giphyKey")}catch{}setApiKey("");setResults([]);setQuery("");}
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:24,backdropFilter:"blur(4px)"}} onClick={onClose}>
+      <div style={{...cSty,maxWidth:640,width:"100%",maxHeight:"85vh",display:"flex",flexDirection:"column",border:`1px solid ${T.acc}44`,color:T.txt}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <h3 style={{fontFamily:dFont,fontSize:20,margin:0}}><GT>🎞 Search Giphy</GT></h3>
+          <button onClick={onClose} style={{background:"none",border:"none",color:T.mut,cursor:"pointer",fontSize:18}}>✕</button>
+        </div>
+        {!apiKey?(
+          <div>
+            <p style={{color:T.mut,fontSize:14,marginBottom:10,lineHeight:1.5}}>To search Giphy, paste a free API key from <a href="https://developers.giphy.com/dashboard/" target="_blank" rel="noopener noreferrer" style={{color:T.acc}}>developers.giphy.com</a>. Stored locally on this device only.</p>
+            <Inp value={keyInput} onChange={setKeyInput} placeholder="Paste Giphy API key..." onKeyDown={e=>e.key==="Enter"&&saveKey()}/>
+            <Btn onClick={saveKey} variant="gold" style={{marginTop:10,width:"100%"}} disabled={!keyInput.trim()}>Save Key</Btn>
+          </div>
+        ):(
+          <>
+            <div style={{display:"flex",gap:8,marginBottom:10}}>
+              <Inp value={query} onChange={setQuery} placeholder="Search GIFs..." autoFocus onKeyDown={e=>{if(e.key==="Enter")search(query)}} style={{flex:1}}/>
+              <Btn onClick={()=>search(query)} style={{fontSize:14,padding:"10px 20px"}} disabled={loading||!query.trim()}>Search</Btn>
+            </div>
+            {error&&<div style={{color:T.pink,fontSize:13,marginBottom:8}}>{error}</div>}
+            {loading&&<div style={{color:T.mut,textAlign:"center",padding:20,fontSize:14}}>Loading…</div>}
+            <div style={{flex:1,overflowY:"auto",display:"grid",gridTemplateColumns:"repeat(3, 1fr)",gap:8,minHeight:results.length?200:0}}>
+              {results.map(g=>(
+                <img key={g.id} src={g.images.fixed_width.url} alt={g.title} onClick={()=>onPick(g.images.original.url)} style={{width:"100%",height:120,objectFit:"cover",borderRadius:8,cursor:"pointer",border:"2px solid transparent",transition:"all .15s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor=T.acc;e.currentTarget.style.transform="scale(1.03)"}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor="transparent";e.currentTarget.style.transform="scale(1)"}}/>
+              ))}
+            </div>
+            <div style={{marginTop:12,display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,color:T.mut}}>
+              <span>Powered by GIPHY</span>
+              <button onClick={clearKey} style={{background:"none",border:"none",color:T.mut,textDecoration:"underline",cursor:"pointer",fontSize:11,fontFamily:font}}>Change API key</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ImagePicker({label,value,onChange}){
+  const[showGiphy,setShowGiphy]=useState(false);
+  const[showUrl,setShowUrl]=useState(false);
+  const[urlInput,setUrlInput]=useState("");
+  const[uploading,setUploading]=useState(false);
+  const[uploadError,setUploadError]=useState("");
+  const fileRef=useRef(null);
+
+  async function handleUpload(e){
+    const file=e.target.files?.[0];if(!file)return;
+    if(file.size>10*1024*1024){setUploadError("File too large (max 10MB)");return;}
+    setUploading(true);setUploadError("");
+    try{
+      const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+      const path=`trivia-images/${Date.now()}-${safe}`;
+      const fileRef2=sref(storage,path);
+      await uploadBytes(fileRef2,file);
+      const url=await getDownloadURL(fileRef2);
+      onChange(url);
+    }catch(err){
+      console.error(err);
+      setUploadError("Upload failed: "+(err.message||err.code||"unknown")+". Enable Firebase Storage in your project, or use Giphy / URL instead.");
+    }finally{
+      setUploading(false);
+      if(fileRef.current) fileRef.current.value="";
+    }
+  }
+
+  const smBtn={fontSize:11,padding:"6px 10px",borderRadius:8,fontFamily:font,fontWeight:600,cursor:"pointer",border:`1px solid ${T.cb}`,background:"#1a1a3e",color:T.txt,transition:"all .15s"};
+
+  return (
+    <div style={{padding:12,borderRadius:12,background:"#0d0d25",border:`1px solid ${T.cb}`,marginBottom:10}}>
+      <div style={{fontSize:11,color:T.mut,marginBottom:8,fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>{label}</div>
+      {value?(
+        <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+          <img src={value} alt="" style={{maxWidth:140,maxHeight:90,objectFit:"cover",borderRadius:8,border:`1px solid ${T.cb}`,background:"#000"}}/>
+          <div style={{display:"flex",flexDirection:"column",gap:4,flex:1,minWidth:0}}>
+            <div style={{fontSize:11,color:T.mut,wordBreak:"break-all",lineHeight:1.3,maxHeight:36,overflow:"hidden"}}>{value.length>60?value.slice(0,60)+"…":value}</div>
+            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+              <button onClick={()=>setShowGiphy(true)} style={smBtn}>🎞 Giphy</button>
+              <button onClick={()=>setShowUrl(true)} style={smBtn}>🔗 URL</button>
+              <button onClick={()=>fileRef.current?.click()} disabled={uploading} style={{...smBtn,opacity:uploading?.6:1}}>{uploading?"…":"📁 Upload"}</button>
+              <button onClick={()=>onChange("")} style={{...smBtn,color:T.pink,borderColor:`${T.pink}66`}}>✕ Remove</button>
+            </div>
+          </div>
+        </div>
+      ):(
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          <button onClick={()=>setShowGiphy(true)} style={smBtn}>🎞 Search Giphy</button>
+          <button onClick={()=>setShowUrl(s=>!s)} style={smBtn}>🔗 Paste URL</button>
+          <button onClick={()=>fileRef.current?.click()} disabled={uploading} style={{...smBtn,opacity:uploading?.6:1}}>{uploading?"Uploading…":"📁 Upload"}</button>
+        </div>
+      )}
+      {showUrl&&!value&&(
+        <div style={{marginTop:8,display:"flex",gap:6}}>
+          <Inp value={urlInput} onChange={setUrlInput} placeholder="https://..." onKeyDown={e=>{if(e.key==="Enter"&&urlInput.trim()){onChange(urlInput.trim());setUrlInput("");setShowUrl(false);}}} style={{flex:1,fontSize:13,padding:"8px 12px"}}/>
+          <button onClick={()=>{if(urlInput.trim()){onChange(urlInput.trim());setUrlInput("");setShowUrl(false);}}} style={smBtn}>Set</button>
+          <button onClick={()=>{setUrlInput("");setShowUrl(false)}} style={smBtn}>✕</button>
+        </div>
+      )}
+      {uploadError&&<div style={{marginTop:8,fontSize:11,color:T.pink,lineHeight:1.4}}>{uploadError}</div>}
+      <input type="file" ref={fileRef} accept="image/*,image/gif" onChange={handleUpload} style={{display:"none"}}/>
+      {showGiphy&&<GiphyPicker onPick={url=>{onChange(url);setShowGiphy(false)}} onClose={()=>setShowGiphy(false)}/>}
+    </div>
+  );
+}
 
 // ═══════════════════════════════════════════
 //  HOME
@@ -456,6 +589,13 @@ function Builder({rounds,setRounds,onBack,onStartHost}){
                     )}
 
                     {q.type!=="music"&&<div style={{marginBottom:10}}><label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Hint (optional)</label><Inp value={q.hint||""} onChange={v=>updateQ(qi,{hint:v})} placeholder="Optional hint..."/></div>}
+
+                    {/* Images (optional) */}
+                    <div style={{marginTop:14,paddingTop:14,borderTop:`1px solid ${T.cb}`}}>
+                      <div style={{fontSize:12,fontWeight:700,color:T.acc,marginBottom:8}}>🖼 Images (optional)</div>
+                      <ImagePicker label="Question slide image / GIF" value={q.image||""} onChange={v=>updateQ(qi,{image:v})}/>
+                      <ImagePicker label="Answer slide image / GIF" value={q.answerImage||""} onChange={v=>updateQ(qi,{answerImage:v})}/>
+                    </div>
                   </div>
                 )}
               </div>
@@ -710,6 +850,7 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
               {slide.question.type==="music"&&<span style={{fontSize:13,padding:"6px 16px",borderRadius:10,background:`${T.pink}22`,border:`1px solid ${T.pink}44`,color:T.pink}}>2 pts (Artist + Song)</span>}
             </div>
             <h2 style={{fontFamily:dFont,fontSize:38,lineHeight:1.3,margin:"0 0 24px",fontWeight:400}}>{slide.question.text}</h2>
+            {slide.question.image&&<div style={{display:"flex",justifyContent:"center",marginBottom:16}}><img src={slide.question.image} alt="" style={{maxWidth:"min(560px,90%)",maxHeight:340,objectFit:"contain",borderRadius:16,border:`1px solid ${T.cb}`,boxShadow:"0 4px 30px #00000055"}}/></div>}
             {slide.question.hint&&!hasYTQuestion&&<p style={{color:T.pink,fontSize:16,fontStyle:"italic"}}>💡 {slide.question.hint}</p>}
             {hasYTQuestion&&<div style={{marginTop:8,marginBottom:16,display:"flex",justifyContent:"center"}}><YTPlayer key={`q-${slide.question.id}`} variant="compact" videoId={musicYtId} start={slide.question.ytStart} end={slide.question.ytEnd}/></div>}
             {slide.question.type==="choice"&&slide.question.options&&(
@@ -742,6 +883,7 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
             {/* Answer — only shown after reveal click */}
             {answerRevealed&&(
               <div style={{animation:"revealPop .6s cubic-bezier(.17,.67,.35,1.3)"}}>
+                {slide.question.answerImage&&<div style={{display:"flex",justifyContent:"center",marginBottom:20}}><img src={slide.question.answerImage} alt="" style={{maxWidth:"min(560px,90%)",maxHeight:300,objectFit:"contain",borderRadius:16,border:`1px solid ${T.cb}`,boxShadow:"0 4px 30px #00000055"}}/></div>}
                 {slide.question.type==="music"?(
                   <div style={{display:"inline-flex",flexDirection:"column",gap:12,alignItems:"center"}}>
                     <div style={{padding:"20px 40px",borderRadius:16,background:"linear-gradient(135deg,#FF6B9D22,#C850C022)",border:`2px solid ${T.pink}`}}>
@@ -943,7 +1085,8 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
               {currentQ.type==="music"&&<span style={{fontSize:12,padding:"4px 12px",borderRadius:8,background:`${T.pink}22`,color:T.pink,marginLeft:8}}>2 pts</span>}
             </div>
             <div style={{...cSty,marginBottom:16}}>
-              <p style={{fontSize:16,lineHeight:1.6,margin:0}}>{currentQ.text}</p>
+              <p style={{fontSize:16,lineHeight:1.6,margin:0,color:T.txt}}>{currentQ.text}</p>
+              {currentQ.image&&<div style={{display:"flex",justifyContent:"center",marginTop:12}}><img src={currentQ.image} alt="" style={{maxWidth:"100%",maxHeight:240,objectFit:"contain",borderRadius:10}}/></div>}
               {currentQ.hint&&<p style={{fontSize:13,color:T.pink,marginTop:8,marginBottom:0}}>💡 {currentQ.hint}</p>}
             </div>
             {already?(
@@ -997,6 +1140,7 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
               </div>
             ):(
               <>
+                {currentQ.answerImage&&<div style={{display:"flex",justifyContent:"center",marginBottom:14}}><img src={currentQ.answerImage} alt="" style={{maxWidth:"100%",maxHeight:240,objectFit:"contain",borderRadius:10}}/></div>}
                 {currentQ.type==="music"?(
                   <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center",marginBottom:16}}>
                     <div style={{padding:"16px 28px",borderRadius:14,background:`${T.pink}15`,border:`2px solid ${T.pink}`,width:"100%"}}>
