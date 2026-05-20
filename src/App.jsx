@@ -514,16 +514,14 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
 
   useEffect(()=>{setAnswerRevealed(false)},[slideIndex]);
 
-  // Sync slide + reveal state to players
+  // Sync slide + reveal state to players (Firebase rejects `undefined` values, so omit them)
   useEffect(()=>{
     if(!gameCode||!slide) return;
-    const payload={
-      type:slide.type,
-      roundIdx:slide.roundIdx,
-      questionId:slide.questionId,
-      questionIdx:slide.questionIdx,
-      phase:slide.phase,
-    };
+    const payload={type:slide.type};
+    if(slide.roundIdx!==undefined) payload.roundIdx=slide.roundIdx;
+    if(slide.questionId!==undefined) payload.questionId=slide.questionId;
+    if(slide.questionIdx!==undefined) payload.questionIdx=slide.questionIdx;
+    if(slide.phase!==undefined) payload.phase=slide.phase;
     if(slide.type==="answer") payload.answerRevealed=answerRevealed;
     storageSet(`game:${gameCode}:state`,payload,true);
   },[gameCode,slide,slideIndex,answerRevealed]);
