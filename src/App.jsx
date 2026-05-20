@@ -326,8 +326,13 @@ function Inp({value,onChange,placeholder,style,type="text",multiline,onKeyDown,a
 const globalCSS=`@import url('https://fonts.googleapis.com/css2?family=Righteous&family=Quicksand:wght@400;600;700&display=swap');*{box-sizing:border-box}`;
 
 // ─── Giphy + Image Picker ────────────────
+const ENV_GIPHY_KEY=(()=>{try{return import.meta.env.VITE_GIPHY_KEY||""}catch{return""}})();
+
 function GiphyPicker({onPick,onClose}){
-  const[apiKey,setApiKey]=useState(()=>{try{return localStorage.getItem("triviahost:giphyKey")||""}catch{return""}});
+  const[apiKey,setApiKey]=useState(()=>{
+    try{const ls=localStorage.getItem("triviahost:giphyKey");if(ls)return ls;}catch{}
+    return ENV_GIPHY_KEY;
+  });
   const[keyInput,setKeyInput]=useState("");
   const[query,setQuery]=useState("");
   const[results,setResults]=useState([]);
@@ -346,7 +351,14 @@ function GiphyPicker({onPick,onClose}){
     finally{setLoading(false);}
   }
   function saveKey(){const v=keyInput.trim();if(!v)return;try{localStorage.setItem("triviahost:giphyKey",v)}catch{}setApiKey(v);setKeyInput("");}
-  function clearKey(){try{localStorage.removeItem("triviahost:giphyKey")}catch{}setApiKey("");setResults([]);setQuery("");}
+  function clearKey(){
+    try{localStorage.removeItem("triviahost:giphyKey")}catch{}
+    setApiKey("");setResults([]);setQuery("");
+  }
+  function useDefault(){
+    try{localStorage.removeItem("triviahost:giphyKey")}catch{}
+    setApiKey(ENV_GIPHY_KEY);setKeyInput("");
+  }
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:24,backdropFilter:"blur(4px)"}} onClick={onClose}>
@@ -357,9 +369,12 @@ function GiphyPicker({onPick,onClose}){
         </div>
         {!apiKey?(
           <div>
-            <p style={{color:T.mut,fontSize:14,marginBottom:10,lineHeight:1.5}}>To search Giphy, paste a free API key from <a href="https://developers.giphy.com/dashboard/" target="_blank" rel="noopener noreferrer" style={{color:T.acc}}>developers.giphy.com</a>. Stored locally on this device only.</p>
+            <p style={{color:T.mut,fontSize:14,marginBottom:10,lineHeight:1.5}}>Paste a Giphy API key (free at <a href="https://developers.giphy.com/dashboard/" target="_blank" rel="noopener noreferrer" style={{color:T.acc}}>developers.giphy.com</a>). Stored locally on this device only.</p>
             <Inp value={keyInput} onChange={setKeyInput} placeholder="Paste Giphy API key..." onKeyDown={e=>e.key==="Enter"&&saveKey()}/>
-            <Btn onClick={saveKey} variant="gold" style={{marginTop:10,width:"100%"}} disabled={!keyInput.trim()}>Save Key</Btn>
+            <div style={{display:"flex",gap:8,marginTop:10}}>
+              <Btn onClick={saveKey} variant="gold" style={{flex:1}} disabled={!keyInput.trim()}>Save Key</Btn>
+              {ENV_GIPHY_KEY&&<Btn onClick={useDefault} variant="ghost" style={{padding:"10px 16px"}}>Use Default</Btn>}
+            </div>
           </div>
         ):(
           <>
@@ -377,8 +392,8 @@ function GiphyPicker({onPick,onClose}){
               ))}
             </div>
             <div style={{marginTop:12,display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,color:T.mut}}>
-              <span>Powered by GIPHY</span>
-              <button onClick={clearKey} style={{background:"none",border:"none",color:T.mut,textDecoration:"underline",cursor:"pointer",fontSize:11,fontFamily:font}}>Change API key</button>
+              <span>Powered by GIPHY{apiKey===ENV_GIPHY_KEY&&ENV_GIPHY_KEY?" · using app default key":""}</span>
+              <button onClick={clearKey} style={{background:"none",border:"none",color:T.mut,textDecoration:"underline",cursor:"pointer",fontSize:11,fontFamily:font}}>{apiKey===ENV_GIPHY_KEY&&ENV_GIPHY_KEY?"Override key":"Change API key"}</button>
             </div>
           </>
         )}
@@ -1201,9 +1216,19 @@ export default function TriviaApp(){
   const[playerName,setPlayerName]=useState("");
   const[playerId]=useState(()=>genId());
   const[playerGameData,setPlayerGameData]=useState(null);
+  const[draftLoaded,setDraftLoaded]=useState(false);
 
-  useEffect(()=>{storageSet("trivia:draft",rounds)},[rounds]);
-  useEffect(()=>{(async()=>{const s=await storageGet("trivia:draft");if(s&&s.length>0)setRounds(s)})()},[]);
+  // Load any persisted draft first; only then enable autosave to avoid the initial
+  // PRELOADED_ROUNDS overwriting a saved draft due to effect ordering.
+  useEffect(()=>{(async()=>{
+    const s=await storageGet("trivia:draft");
+    if(s&&s.length>0) setRounds(s);
+    setDraftLoaded(true);
+  })()},[]);
+  useEffect(()=>{
+    if(!draftLoaded) return;
+    storageSet("trivia:draft",rounds);
+  },[rounds,draftLoaded]);
 
   function startHostLobby(){const c=genCode();setGameCode(c);setPlayers([]);setSlideIndex(0);storageSet(`game:${c}:host`,{rounds},true);storageSet(`game:${c}:overrides`,{},true);setScreen("host-lobby")}
 
