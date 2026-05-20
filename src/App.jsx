@@ -141,8 +141,11 @@ function parseTime(t) {
 }
 
 // ─── Slide Sequence Builder ──────────────
-function buildSlides(rounds, includeObj=true) {
+const DEFAULT_COVER={title:"TriviaHost",subtitle:"",emoji:"🎉",image:""};
+
+function buildSlides(rounds, includeObj=true, cover=null) {
   const s=[], pairs=[];
+  if(cover) s.push({type:"cover",...(includeObj?{cover}:{})});
   for(let i=0;i<rounds.length;i+=2) pairs.push(rounds.slice(i,i+2));
   pairs.forEach((pair,pi)=>{
     pair.forEach((round,li)=>{
@@ -496,18 +499,21 @@ function HomeScreen({onNavigate}){
 // ═══════════════════════════════════════════
 //  BUILDER
 // ═══════════════════════════════════════════
-function Builder({rounds,setRounds,onBack,onStartHost}){
-  const[activeRound,setActiveRound]=useState(0);
+function Builder({cover,setCover,rounds,setRounds,onBack,onStartHost}){
+  const[activeRound,setActiveRound]=useState(0); // -1 = cover slide editor
   const[editingQ,setEditingQ]=useState(null);
   const[showAddRound,setShowAddRound]=useState(false);
   const[newRoundName,setNewRoundName]=useState("");
-  const round=rounds[activeRound];
+  const[showRoundSettings,setShowRoundSettings]=useState(false);
+  const round=activeRound>=0?rounds[activeRound]:null;
 
-  function addRound(){if(!newRoundName.trim())return;setRounds(p=>[...p,{id:genId(),name:newRoundName.trim(),emoji:"❓",questions:[]}]);setNewRoundName("");setShowAddRound(false);setActiveRound(rounds.length)}
+  function addRound(){if(!newRoundName.trim())return;setRounds(p=>[...p,{id:genId(),name:newRoundName.trim(),emoji:"❓",image:"",questions:[]}]);setNewRoundName("");setShowAddRound(false);setActiveRound(rounds.length)}
   function deleteRound(idx){setRounds(p=>p.filter((_,i)=>i!==idx));setActiveRound(Math.max(0,activeRound-1))}
   function addQuestion(){const nq={id:genId(),type:"text",text:"",answer:"",hint:""};setRounds(p=>p.map((r,i)=>i===activeRound?{...r,questions:[...r.questions,nq]}:r));setEditingQ(round.questions.length)}
   function updateQ(qi,u){setRounds(p=>p.map((r,i)=>i===activeRound?{...r,questions:r.questions.map((q,j)=>j===qi?{...q,...u}:q)}:r))}
   function deleteQ(qi){setRounds(p=>p.map((r,i)=>i===activeRound?{...r,questions:r.questions.filter((_,j)=>j!==qi)}:r));setEditingQ(null)}
+  function updateRound(u){setRounds(p=>p.map((r,i)=>i===activeRound?{...r,...u}:r))}
+  function updateCover(u){setCover(c=>({...c,...u}))}
 
   const typeLabel=t=>t==="choice"?"Multiple Choice":t==="range"?"Number Range":t==="music"?"🎵 Music":"Text";
   const typeColor=t=>t==="choice"?"#7B93FF":t==="range"?T.grn:t==="music"?T.pink:T.acc;
@@ -523,10 +529,17 @@ function Builder({rounds,setRounds,onBack,onStartHost}){
       </div>
       <div style={{display:"flex",minHeight:"calc(100vh - 65px)"}}>
         {/* Sidebar */}
-        <div style={{width:220,borderRight:`1px solid ${T.cb}`,padding:16,flexShrink:0,overflowY:"auto"}}>
+        <div style={{width:240,borderRight:`1px solid ${T.cb}`,padding:16,flexShrink:0,overflowY:"auto"}}>
+          <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:1,color:T.mut,marginBottom:8}}>Intro</div>
+          <div onClick={()=>setActiveRound(-1)} style={{padding:"10px 14px",borderRadius:12,marginBottom:14,cursor:"pointer",background:activeRound===-1?"#1e1e45":"transparent",border:activeRound===-1?`1px solid ${T.gold}55`:"1px solid transparent"}}>
+            <div style={{fontSize:14,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
+              <span>{cover.emoji||"🎉"}</span><span>Cover Slide</span>
+            </div>
+            <div style={{fontSize:11,color:T.mut,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{cover.title||"Untitled"}</div>
+          </div>
           <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:1,color:T.mut,marginBottom:12}}>Rounds</div>
           {rounds.map((r,i)=>(
-            <div key={r.id} onClick={()=>setActiveRound(i)} style={{padding:"10px 14px",borderRadius:12,marginBottom:6,cursor:"pointer",background:i===activeRound?"#1e1e45":"transparent",border:i===activeRound?`1px solid ${T.acc}44`:"1px solid transparent"}}>
+            <div key={r.id} onClick={()=>{setActiveRound(i);setShowRoundSettings(false);setEditingQ(null)}} style={{padding:"10px 14px",borderRadius:12,marginBottom:6,cursor:"pointer",background:i===activeRound?"#1e1e45":"transparent",border:i===activeRound?`1px solid ${T.acc}44`:"1px solid transparent"}}>
               <div style={{fontSize:14,fontWeight:600,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <span>{r.emoji} {r.name}</span>
                 {rounds.length>1&&<span onClick={e=>{e.stopPropagation();deleteRound(i)}} style={{fontSize:11,color:T.mut,cursor:"pointer"}}>✕</span>}
@@ -538,10 +551,38 @@ function Builder({rounds,setRounds,onBack,onStartHost}){
           (<button onClick={()=>setShowAddRound(true)} style={{width:"100%",padding:10,background:"none",border:`1px dashed ${T.cb}`,borderRadius:12,color:T.mut,cursor:"pointer",fontFamily:font,fontSize:13,marginTop:4}}>+ Add Round</button>)}
         </div>
 
-        {/* Questions */}
+        {/* Edit area */}
         <div style={{flex:1,padding:24,overflowY:"auto",maxHeight:"calc(100vh - 65px)"}}>
-          {round&&(<>
-            <h3 style={{fontFamily:dFont,fontSize:26,margin:"0 0 20px"}}>{round.emoji} {round.name}</h3>
+          {activeRound===-1?(<>
+            <h3 style={{fontFamily:dFont,fontSize:26,margin:"0 0 6px"}}><GT>Cover Slide</GT></h3>
+            <p style={{color:T.mut,fontSize:13,marginBottom:20}}>This is the first slide your audience sees when you start the game.</p>
+            <div style={{...cSty,maxWidth:560}}>
+              <div style={{marginBottom:12}}><label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Title</label><Inp value={cover.title} onChange={v=>updateCover({title:v})} placeholder="Welcome to Trivia Night"/></div>
+              <div style={{marginBottom:12}}><label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Subtitle (optional)</label><Inp value={cover.subtitle||""} onChange={v=>updateCover({subtitle:v})} placeholder="An evening of questionable knowledge"/></div>
+              <div style={{marginBottom:12,display:"flex",gap:10}}>
+                <div style={{flex:"0 0 120px"}}><label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Emoji</label><Inp value={cover.emoji||""} onChange={v=>updateCover({emoji:v})} placeholder="🎉" style={{fontSize:24,textAlign:"center"}}/></div>
+                <div style={{flex:1,paddingTop:18,fontSize:12,color:T.mut,lineHeight:1.5}}>Tip: open your OS emoji picker (Win+. on Windows, ⌃⌘Space on Mac) and paste any emoji.</div>
+              </div>
+              <ImagePicker label="Cover image / GIF" value={cover.image||""} onChange={v=>updateCover({image:v})}/>
+            </div>
+          </>):round&&(<>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <h3 style={{fontFamily:dFont,fontSize:26,margin:0}}>{round.emoji} {round.name}</h3>
+              <button onClick={()=>setShowRoundSettings(s=>!s)} style={{background:"#1a1a3e",border:`1px solid ${T.cb}`,color:T.mut,borderRadius:10,padding:"6px 12px",cursor:"pointer",fontFamily:font,fontSize:12,fontWeight:600,transition:"all .15s"}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor=T.acc;e.currentTarget.style.color=T.txt}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor=T.cb;e.currentTarget.style.color=T.mut}}>
+                {showRoundSettings?"▴ Round Settings":"⚙ Round Settings"}
+              </button>
+            </div>
+            {showRoundSettings&&(
+              <div style={{...cSty,marginBottom:20,background:"#0d0d25",border:`1px solid ${T.acc}33`}}>
+                <div style={{display:"flex",gap:10,marginBottom:10}}>
+                  <div style={{flex:1}}><label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Round Name</label><Inp value={round.name||""} onChange={v=>updateRound({name:v})} placeholder="Round name"/></div>
+                  <div style={{flex:"0 0 100px"}}><label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Emoji</label><Inp value={round.emoji||""} onChange={v=>updateRound({emoji:v})} placeholder="❓" style={{fontSize:22,textAlign:"center"}}/></div>
+                </div>
+                <ImagePicker label="Round title image / GIF (shown on round intro)" value={round.image||""} onChange={v=>updateRound({image:v})}/>
+              </div>
+            )}
             {round.questions.map((q,qi)=>(
               <div key={q.id} style={{...cSty,marginBottom:12,cursor:"pointer"}} onClick={()=>setEditingQ(editingQ===qi?null:qi)}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -657,18 +698,20 @@ function HostLobby({rounds,gameCode,players,onStart,onBack}){
 // ═══════════════════════════════════════════
 //  HOST PRESENTATION — two-click answer reveal
 // ═══════════════════════════════════════════
-function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEnd}){
+function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideIndex,onEnd}){
   const[showConfetti,setShowConfetti]=useState(false);
   const[answerRevealed,setAnswerRevealed]=useState(false);
+  const[resultsRevealed,setResultsRevealed]=useState(false);
   const[overrides,setOverrides]=useState({}); // { "qId:pId": pointsAwarded }
   const[confirmEnd,setConfirmEnd]=useState(false);
   const[showNav,setShowNav]=useState(false);
-  const slides=useMemo(()=>buildSlides(rounds,true),[rounds]);
+  const slides=useMemo(()=>buildSlides(rounds,true,cover),[rounds,cover]);
   const slide=slides[slideIndex]||slides[0];
   const progress=((slideIndex+1)/slides.length)*100;
   const isAnswer=slide.type==="answer";
+  const isResults=slide.type==="results";
 
-  useEffect(()=>{setAnswerRevealed(false)},[slideIndex]);
+  useEffect(()=>{setAnswerRevealed(false);setResultsRevealed(false)},[slideIndex]);
 
   // Sync slide + reveal state to players (Firebase rejects `undefined` values, so omit them)
   useEffect(()=>{
@@ -708,18 +751,20 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
     }).sort((a,b)=>b.score-a.score);
   },[players,rounds,overrides]);
 
-  useEffect(()=>{if(slide.type==="results"){setShowConfetti(true);const t=setTimeout(()=>setShowConfetti(false),4000);return()=>clearTimeout(t)}},[slide.type]);
+  useEffect(()=>{if(isResults&&resultsRevealed){setShowConfetti(true);const t=setTimeout(()=>setShowConfetti(false),4000);return()=>clearTimeout(t)}},[isResults,resultsRevealed]);
 
-  // Keyboard/click nav with answer reveal logic
+  // Keyboard/click nav with answer + results reveal logic
   const handleAdvance=useCallback(()=>{
     if(isAnswer&&!answerRevealed){setAnswerRevealed(true);return;}
+    if(isResults&&!resultsRevealed){setResultsRevealed(true);return;}
     setSlideIndex(i=>Math.min(i+1,slides.length-1));
-  },[isAnswer,answerRevealed,slides.length]);
+  },[isAnswer,answerRevealed,isResults,resultsRevealed,slides.length]);
 
   const handleBack=useCallback(()=>{
     if(isAnswer&&answerRevealed){setAnswerRevealed(false);return;}
+    if(isResults&&resultsRevealed){setResultsRevealed(false);return;}
     setSlideIndex(i=>Math.max(i-1,0));
-  },[isAnswer,answerRevealed]);
+  },[isAnswer,answerRevealed,isResults,resultsRevealed]);
 
   useEffect(()=>{
     const handler=(e)=>{
@@ -780,7 +825,9 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
           onMouseLeave={e=>{e.currentTarget.style.borderColor=T.cb;e.currentTarget.style.color=T.mut}}>
           {slideIndex+1}/{slides.length} ▾
         </button>
-        {slideIndex>=slides.length-1&&!isAnswer?(
+        {isResults&&!resultsRevealed?(
+          <Btn onClick={handleAdvance} variant="reveal" style={{padding:"10px 24px",fontSize:14}}>✨ Reveal Standings</Btn>
+        ):isResults&&resultsRevealed?(
           <Btn onClick={onEnd} variant="gold" style={{padding:"10px 20px",fontSize:14}}>End Game 🏁</Btn>
         ):isAnswer&&!answerRevealed?(
           <Btn onClick={handleAdvance} variant="reveal" style={{padding:"10px 24px",fontSize:14}}>✨ Reveal Answer</Btn>
@@ -801,7 +848,9 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
               {slides.map((s,i)=>{
                 const isCurrent=i===slideIndex;
                 let label="",icon="",section="";
-                if(s.type==="round-title"){
+                if(s.type==="cover"){
+                  icon=s.cover?.emoji||"🎉"; label=s.cover?.title||"Cover Slide"; section="cover";
+                }else if(s.type==="round-title"){
                   icon=s.round?.emoji||"📋";
                   label=s.phase==="questions"?`${s.round?.name}`:`${s.round?.name} — Answers`;
                   section=s.phase==="questions"?"question":"answer";
@@ -816,8 +865,8 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
                 }else if(s.type==="results"){
                   icon="🏆"; label="Final Scores"; section="results";
                 }
-                const isHeader=s.type==="round-title"||s.type==="divider"||s.type==="results";
-                const sColor=section==="answer"?T.grn:section==="divider"?T.gold:section==="results"?T.gold:T.txt;
+                const isHeader=s.type==="cover"||s.type==="round-title"||s.type==="divider"||s.type==="results";
+                const sColor=section==="answer"?T.grn:section==="divider"?T.gold:section==="results"?T.gold:section==="cover"?T.gold:T.txt;
                 return (
                   <button key={i} onClick={()=>{setSlideIndex(i);setShowNav(false)}} style={{
                     display:"flex",alignItems:"center",gap:8,padding:isHeader?"10px 12px":"6px 12px",
@@ -844,10 +893,20 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
       )}
 
       {/* Slide */}
-      <div key={`${slideIndex}-${answerRevealed}`} style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"60px 40px 100px",position:"relative",zIndex:10,animation:"slideIn .5s ease"}}>
+      <div key={`${slideIndex}-${answerRevealed}-${resultsRevealed}`} style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"60px 40px 100px",position:"relative",zIndex:10,animation:"slideIn .5s ease"}}>
+
+        {slide.type==="cover"&&(
+          <div style={{textAlign:"center",maxWidth:900}}>
+            {slide.cover?.image&&<div style={{display:"flex",justifyContent:"center",marginBottom:24}}><img src={slide.cover.image} alt="" style={{maxWidth:"min(640px,90%)",maxHeight:380,objectFit:"contain",borderRadius:24,border:`1px solid ${T.cb}`,boxShadow:"0 4px 40px #00000066"}}/></div>}
+            {slide.cover?.emoji&&<div style={{fontSize:72,marginBottom:8}}>{slide.cover.emoji}</div>}
+            <h1 style={{fontFamily:dFont,fontSize:72,margin:0,animation:"glow 3s infinite",lineHeight:1.1}}><GT>{slide.cover?.title||"TriviaHost"}</GT></h1>
+            {slide.cover?.subtitle&&<p style={{color:T.mut,fontSize:20,marginTop:18}}>{slide.cover.subtitle}</p>}
+          </div>
+        )}
 
         {slide.type==="round-title"&&(
           <div style={{textAlign:"center"}}>
+            {slide.round.image&&<div style={{display:"flex",justifyContent:"center",marginBottom:20}}><img src={slide.round.image} alt="" style={{maxWidth:"min(520px,90%)",maxHeight:300,objectFit:"contain",borderRadius:20,border:`1px solid ${T.cb}`,boxShadow:"0 4px 30px #00000055"}}/></div>}
             <div style={{fontSize:80,marginBottom:16}}>{slide.round.emoji}</div>
             <div style={{fontSize:14,textTransform:"uppercase",letterSpacing:3,color:T.mut,marginBottom:12}}>
               {slide.phase==="questions"?`Round ${slide.roundIdx+1}`:`Round ${slide.roundIdx+1} — Answers`}
@@ -983,7 +1042,11 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
           <div style={{textAlign:"center",maxWidth:600,width:"100%"}}>
             <div style={{fontSize:64,marginBottom:8}}>🏆</div>
             <h1 style={{fontFamily:dFont,fontSize:44,margin:"0 0 32px"}}><GT>Final Scores</GT></h1>
-            {scores.length===0?<p style={{color:T.mut}}>No players — host-only mode</p>:(
+            {!resultsRevealed?(
+              <div style={{color:T.mut,fontSize:16,fontStyle:"italic",animation:"glow 3s infinite",padding:"30px 0"}}>
+                Drumroll please… click "Reveal Standings" to show the results.
+              </div>
+            ):scores.length===0?<p style={{color:T.mut}}>No players — host-only mode</p>:(
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 {scores.map((p,i)=>{
                   const pct=totalPts>0?(p.score/totalPts)*100:0;
@@ -1208,6 +1271,7 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
 // ═══════════════════════════════════════════
 export default function TriviaApp(){
   const[screen,setScreen]=useState("home");
+  const[cover,setCover]=useState(DEFAULT_COVER);
   const[rounds,setRounds]=useState(PRELOADED_ROUNDS);
   const[gameCode,setGameCode]=useState("");
   const[players,setPlayers]=useState([]);
@@ -1220,17 +1284,25 @@ export default function TriviaApp(){
 
   // Load any persisted draft first; only then enable autosave to avoid the initial
   // PRELOADED_ROUNDS overwriting a saved draft due to effect ordering.
+  // Backward compat: older saved drafts are a plain rounds array.
   useEffect(()=>{(async()=>{
     const s=await storageGet("trivia:draft");
-    if(s&&s.length>0) setRounds(s);
+    if(s){
+      if(Array.isArray(s)){
+        if(s.length>0) setRounds(s);
+      }else if(typeof s==="object"){
+        if(Array.isArray(s.rounds)&&s.rounds.length>0) setRounds(s.rounds);
+        if(s.cover&&typeof s.cover==="object") setCover({...DEFAULT_COVER,...s.cover});
+      }
+    }
     setDraftLoaded(true);
   })()},[]);
   useEffect(()=>{
     if(!draftLoaded) return;
-    storageSet("trivia:draft",rounds);
-  },[rounds,draftLoaded]);
+    storageSet("trivia:draft",{cover,rounds});
+  },[cover,rounds,draftLoaded]);
 
-  function startHostLobby(){const c=genCode();setGameCode(c);setPlayers([]);setSlideIndex(0);storageSet(`game:${c}:host`,{rounds},true);storageSet(`game:${c}:overrides`,{},true);setScreen("host-lobby")}
+  function startHostLobby(){const c=genCode();setGameCode(c);setPlayers([]);setSlideIndex(0);storageSet(`game:${c}:host`,{cover,rounds},true);storageSet(`game:${c}:overrides`,{},true);setScreen("host-lobby")}
 
   useEffect(()=>{
     if(screen!=="host-lobby"&&screen!=="host-game")return;if(!gameCode)return;
@@ -1247,9 +1319,9 @@ export default function TriviaApp(){
   function handlePlayerJoin(c,n,d){setPlayerGameCode(c);setPlayerName(n);setPlayerGameData(d);setScreen("player-game")}
 
   if(screen==="home")return <HomeScreen onNavigate={t=>{if(t==="builder")setScreen("builder");else if(t==="host-lobby")startHostLobby();else if(t==="player-join")setScreen("player-join")}}/>;
-  if(screen==="builder")return <Builder rounds={rounds} setRounds={setRounds} onBack={()=>setScreen("home")} onStartHost={startHostLobby}/>;
+  if(screen==="builder")return <Builder cover={cover} setCover={setCover} rounds={rounds} setRounds={setRounds} onBack={()=>setScreen("home")} onStartHost={startHostLobby}/>;
   if(screen==="host-lobby")return <HostLobby rounds={rounds} gameCode={gameCode} players={players} onStart={startGame} onBack={()=>setScreen("home")}/>;
-  if(screen==="host-game")return <HostPresentation rounds={rounds} gameCode={gameCode} players={players} slideIndex={slideIndex} setSlideIndex={setSlideIndex} onEnd={endGame}/>;
+  if(screen==="host-game")return <HostPresentation cover={cover} rounds={rounds} gameCode={gameCode} players={players} slideIndex={slideIndex} setSlideIndex={setSlideIndex} onEnd={endGame}/>;
   if(screen==="player-join")return <PlayerJoin onJoin={handlePlayerJoin} onBack={()=>setScreen("home")}/>;
   if(screen==="player-game")return <PlayerGame gameCode={playerGameCode} playerName={playerName} playerId={playerId} initialGameData={playerGameData} onLeave={()=>setScreen("home")}/>;
   return <HomeScreen onNavigate={()=>setScreen("home")}/>;
