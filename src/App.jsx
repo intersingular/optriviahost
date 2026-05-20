@@ -113,6 +113,13 @@ function scoreAnswer(question, playerAnswer) {
 // Max possible points for a question
 function maxPoints(q) { return q.type === "music" ? 2 : 1; }
 
+// Effective points (host overrides synced via Firebase)
+function getEffectivePoints(q, playerId, playerAnswer, overrides = {}) {
+  const key = `${q.id}:${playerId}`;
+  if (overrides && key in overrides) return overrides[key];
+  return scoreAnswer(q, playerAnswer);
+}
+
 function extractYTId(url) {
   if (!url) return null;
   const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([a-zA-Z0-9_-]{11})/);
@@ -194,18 +201,16 @@ function Confetti({active}){
 }
 
 // ─── YouTube Player ──────────────────────
-// Production YouTube embed using IFrame Player API for clip start/end control.
-// Requires hosting on a real domain (YouTube embeds are blocked in artifact sandbox).
-function YTPlayer({videoId,start,end}){
-  const[playing,setPlaying]=useState(false);
-  const[showVideo,setShowVideo]=useState(false);
+// variant "compact" = host question slide (audio only UI); "answer" = answer slide with visible video
+function YTPlayer({videoId,start,end,variant="compact"}){
+  const[status,setStatus]=useState("idle"); // idle | playing | stopped
   const playerRef=useRef(null);
   const containerRef=useRef(null);
   const timerRef=useRef(null);
   const startSec=parseTime(start)||0;
   const endSec=parseTime(end);
+  const showVideo=variant==="answer";
 
-  // Load YouTube IFrame API once
   useEffect(()=>{
     if(window.YT) return;
     const tag=document.createElement("script");
@@ -213,14 +218,20 @@ function YTPlayer({videoId,start,end}){
     document.head.appendChild(tag);
   },[]);
 
-  // Create player when activated
+  const destroyPlayer=useCallback(()=>{
+    if(timerRef.current){clearInterval(timerRef.current);timerRef.current=null;}
+    if(playerRef.current?.destroy){playerRef.current.destroy();playerRef.current=null;}
+  },[]);
+
   useEffect(()=>{
-    if(!playing) return;
+    if(status!=="playing") return;
+    const handleEnd=()=>{destroyPlayer();setStatus("stopped");};
     const initPlayer=()=>{
       if(!containerRef.current) return;
       playerRef.current=new window.YT.Player(containerRef.current,{
         videoId,
-        width:480,height:270,
+        width:showVideo?480:1,
+        height:showVideo?270:1,
         playerVars:{
           autoplay:1,
           start:startSec,
@@ -232,81 +243,53 @@ function YTPlayer({videoId,start,end}){
         events:{
           onReady:(e)=>{e.target.playVideo()},
           onStateChange:(e)=>{
-            // Loop: when video ends or reaches end time, restart clip
-            if(e.data===window.YT.PlayerState.ENDED){
-              e.target.seekTo(startSec);
-              e.target.playVideo();
-            }
+            if(e.data===window.YT.PlayerState.ENDED) handleEnd();
           },
         },
       });
-      // Backup timer to enforce end time (YT end param isn't always reliable for looping)
       if(endSec&&endSec>startSec){
         timerRef.current=setInterval(()=>{
-          if(playerRef.current?.getCurrentTime&&playerRef.current.getCurrentTime()>=endSec){
-            playerRef.current.seekTo(startSec);
-            playerRef.current.playVideo();
-          }
+          if(playerRef.current?.getCurrentTime&&playerRef.current.getCurrentTime()>=endSec) handleEnd();
         },500);
       }
     };
     if(window.YT&&window.YT.Player) initPlayer();
     else window.onYouTubeIframeAPIReady=initPlayer;
+    return destroyPlayer;
+  },[status,videoId,startSec,endSec,showVideo,destroyPlayer]);
 
-    return()=>{
-      if(timerRef.current) clearInterval(timerRef.current);
-      if(playerRef.current?.destroy) playerRef.current.destroy();
-      playerRef.current=null;
-    };
-  },[playing,videoId,startSec,endSec]);
-
-  function stop(){
-    if(timerRef.current) clearInterval(timerRef.current);
-    if(playerRef.current?.destroy) playerRef.current.destroy();
-    playerRef.current=null;
-    setPlaying(false);
-  }
-
-  if(!playing) return (
-    <button onClick={()=>setPlaying(true)} style={{background:"linear-gradient(135deg,#FF6B9D,#C850C0)",border:"none",borderRadius:20,padding:"16px 36px",color:"#fff",fontFamily:"'Righteous',cursive",fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",gap:12,transition:"all .2s",boxShadow:"0 4px 24px #C850C044"}}
+  const playBtn=(
+    <button onClick={()=>setStatus("playing")} style={{background:"linear-gradient(135deg,#FF6B9D,#C850C0)",border:"none",borderRadius:20,padding:"16px 36px",color:"#fff",fontFamily:"'Righteous',cursive",fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",gap:12,transition:"all .2s",boxShadow:"0 4px 24px #C850C044"}}
     onMouseEnter={e=>e.currentTarget.style.transform="scale(1.05)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
-      <span style={{fontSize:28}}>▶</span> Play Clip
+      <span style={{fontSize:28}}>▶</span> {status==="stopped"?"Replay Clip":"Play Clip"}
     </button>
   );
 
+  if(status==="idle") return playBtn;
+
+  const eqActive=status==="playing";
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
-      {/* YouTube player container */}
-      <div style={{
-        borderRadius:14,overflow:"hidden",border:"2px solid #C850C044",boxShadow:"0 4px 30px #C850C033",
-        width:showVideo?480:320, height:showVideo?270:0,
-        transition:"all .3s ease", background:"#000",
-      }}>
-        <div ref={containerRef} />
-      </div>
+      {showVideo?(
+        <div style={{borderRadius:14,overflow:"hidden",border:"2px solid #C850C044",boxShadow:"0 4px 30px #C850C033",width:480,height:270,background:"#000"}}>
+          <div ref={containerRef}/>
+        </div>
+      ):(
+        <div ref={containerRef} style={{position:"absolute",width:1,height:1,overflow:"hidden",opacity:0,pointerEvents:"none"}} aria-hidden="true"/>
+      )}
 
-      {/* Controls */}
-      <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",justifyContent:"center"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,justifyContent:"center"}}>
         <style>{`@keyframes eqB{0%,100%{height:6px}50%{height:20px}}`}</style>
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 18px",borderRadius:12,background:"#C850C022",border:"1px solid #C850C044"}}>
           <div style={{display:"flex",alignItems:"end",gap:2,height:20}}>
-            {[0,.12,.24,.08,.2].map((d,i)=><div key={i} style={{width:3,borderRadius:2,background:"linear-gradient(180deg,#FF6B9D,#C850C0)",animation:`eqB ${.4+Math.random()*.4}s ease-in-out ${d}s infinite`}}/>)}
+            {[0,.12,.24,.08,.2].map((d,i)=><div key={i} style={{width:3,borderRadius:2,background:"linear-gradient(180deg,#FF6B9D,#C850C0)",animation:eqActive?`eqB ${.4+Math.random()*.4}s ease-in-out ${d}s infinite`:"none",height:eqActive?undefined:6}}/>)}
           </div>
-          <span style={{fontFamily:"'Righteous',cursive",fontSize:13,color:"#FF6B9D"}}>
-            {start||"0:00"}{end?" → "+end:""} Playing
-          </span>
         </div>
-
-        <label onClick={()=>setShowVideo(v=>!v)} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,color:"#8888AA",userSelect:"none"}}>
-          <span style={{
-            width:18,height:18,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center",
-            background:showVideo?"#C850C0":"transparent",border:`2px solid ${showVideo?"#C850C0":"#555"}`,
-            fontSize:11,color:"#fff",transition:"all .15s",
-          }}>{showVideo?"✓":""}</span>
-          Show video
-        </label>
-
-        <button onClick={stop} style={{background:"#FF6B9D22",border:"1px solid #FF6B9D44",borderRadius:8,padding:"5px 12px",color:"#FF6B9D",cursor:"pointer",fontFamily:"'Quicksand',sans-serif",fontSize:12,fontWeight:600}}>Stop</button>
+        {status==="playing"?(
+          <button onClick={()=>{destroyPlayer();setStatus("stopped")}} style={{background:"#FF6B9D22",border:"1px solid #FF6B9D44",borderRadius:8,padding:"8px 16px",color:"#FF6B9D",cursor:"pointer",fontFamily:"'Quicksand',sans-serif",fontSize:13,fontWeight:600}}>Stop</button>
+        ):(
+          <button onClick={()=>setStatus("playing")} style={{background:"#43E97B22",border:"1px solid #43E97B44",borderRadius:8,padding:"8px 16px",color:"#43E97B",cursor:"pointer",fontFamily:"'Quicksand',sans-serif",fontSize:13,fontWeight:600}}>Replay</button>
+        )}
       </div>
     </div>
   );
@@ -345,7 +328,7 @@ function HomeScreen({onNavigate}){
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,fontFamily:font}}>
       <style>{globalCSS}{`@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}@keyframes slideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}`}</style>
       <div style={{animation:"float 3s ease-in-out infinite",marginBottom:12,fontSize:64}}>🎉</div>
-      <h1 style={{fontFamily:dFont,fontSize:48,margin:0,textAlign:"center"}}><GT>Trivia Night</GT></h1>
+      <h1 style={{fontFamily:dFont,fontSize:48,margin:0,textAlign:"center"}}><GT>TriviaHost</GT></h1>
       <p style={{color:T.mut,fontSize:16,marginTop:8,marginBottom:48,textAlign:"center"}}>Build · Present · Play</p>
       <div style={{display:"flex",flexDirection:"column",gap:16,width:"100%",maxWidth:380}}>
         {[{icon:"🛠️",label:"Build Trivia",desc:"Create & edit questions",target:"builder"},{icon:"🎤",label:"Host a Game",desc:"Present to your crowd",target:"host-lobby"},{icon:"📱",label:"Join as Player",desc:"Answer on your device",target:"player-join"}].map((it,i)=>(
@@ -529,22 +512,36 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
   const progress=((slideIndex+1)/slides.length)*100;
   const isAnswer=slide.type==="answer";
 
-  // Reset reveal state when slide changes
   useEffect(()=>{setAnswerRevealed(false)},[slideIndex]);
 
-  // Get effective points for a player on a question (override or auto-score)
+  // Sync slide + reveal state to players
+  useEffect(()=>{
+    if(!gameCode||!slide) return;
+    const payload={
+      type:slide.type,
+      roundIdx:slide.roundIdx,
+      questionId:slide.questionId,
+      questionIdx:slide.questionIdx,
+      phase:slide.phase,
+    };
+    if(slide.type==="answer") payload.answerRevealed=answerRevealed;
+    storageSet(`game:${gameCode}:state`,payload,true);
+  },[gameCode,slide,slideIndex,answerRevealed]);
+
+  // Sync host score overrides so player totals match
+  useEffect(()=>{
+    if(gameCode) storageSet(`game:${gameCode}:overrides`,overrides,true);
+  },[gameCode,overrides]);
+
   function getPoints(q, playerId, playerAnswer) {
-    const key = `${q.id}:${playerId}`;
-    if (key in overrides) return overrides[key];
-    return scoreAnswer(q, playerAnswer);
+    return getEffectivePoints(q, playerId, playerAnswer, overrides);
   }
 
-  // Toggle override: cycle through possible point values
   function toggleOverride(q, playerId, playerAnswer) {
     const key = `${q.id}:${playerId}`;
     const current = key in overrides ? overrides[key] : scoreAnswer(q, playerAnswer);
     const mp = maxPoints(q);
-    const next = (current + 1) % (mp + 1); // 0 → 1 → (2 for music) → 0
+    const next = (current + 1) % (mp + 1);
     setOverrides(prev => ({ ...prev, [key]: next }));
   }
 
@@ -552,7 +549,7 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
   const scores=useMemo(()=>{
     return players.map(p=>{
       let score=0;
-      rounds.forEach(r=>r.questions.forEach(q=>{score+=getPoints(q,p.id,p.answers?.[q.id])}));
+      rounds.forEach(r=>r.questions.forEach(q=>{score+=getEffectivePoints(q,p.id,p.answers?.[q.id],overrides)}));
       return{...p,score};
     }).sort((a,b)=>b.score-a.score);
   },[players,rounds,overrides]);
@@ -580,7 +577,10 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
   },[handleAdvance,handleBack]);
 
   const bgs=["radial-gradient(ellipse at 20% 50%,#4158D033 0%,transparent 60%)","radial-gradient(ellipse at 80% 30%,#C850C033 0%,transparent 60%)","radial-gradient(ellipse at 50% 80%,#43E97B22 0%,transparent 60%)"];
-  const hasYT=slide.type==="question"&&slide.question?.type==="music"&&slide.question?.ytUrl&&extractYTId(slide.question.ytUrl);
+  const musicQ=slide.question?.type==="music"?slide.question:null;
+  const musicYtId=musicQ?.ytUrl?extractYTId(musicQ.ytUrl):null;
+  const hasYTQuestion=slide.type==="question"&&musicYtId;
+  const hasYTAnswer=slide.type==="answer"&&answerRevealed&&musicYtId;
 
   return(
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:font,color:T.txt,position:"relative",overflow:"hidden"}}>
@@ -711,8 +711,8 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
               {slide.question.type==="music"&&<span style={{fontSize:13,padding:"6px 16px",borderRadius:10,background:`${T.pink}22`,border:`1px solid ${T.pink}44`,color:T.pink}}>2 pts (Artist + Song)</span>}
             </div>
             <h2 style={{fontFamily:dFont,fontSize:38,lineHeight:1.3,margin:"0 0 24px",fontWeight:400}}>{slide.question.text}</h2>
-            {slide.question.hint&&!hasYT&&<p style={{color:T.pink,fontSize:16,fontStyle:"italic"}}>💡 {slide.question.hint}</p>}
-            {hasYT&&<div style={{marginTop:8,marginBottom:16,display:"flex",justifyContent:"center"}}><YTPlayer key={slide.question.id} videoId={extractYTId(slide.question.ytUrl)} start={slide.question.ytStart} end={slide.question.ytEnd}/></div>}
+            {slide.question.hint&&!hasYTQuestion&&<p style={{color:T.pink,fontSize:16,fontStyle:"italic"}}>💡 {slide.question.hint}</p>}
+            {hasYTQuestion&&<div style={{marginTop:8,marginBottom:16,display:"flex",justifyContent:"center"}}><YTPlayer key={`q-${slide.question.id}`} variant="compact" videoId={musicYtId} start={slide.question.ytStart} end={slide.question.ytEnd}/></div>}
             {slide.question.type==="choice"&&slide.question.options&&(
               <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap",marginTop:24}}>
                 {slide.question.options.map((opt,i)=><div key={i} style={{padding:"14px 28px",borderRadius:14,background:T.card,border:`2px solid ${T.cb}`,fontSize:20,fontWeight:600,fontFamily:dFont}}>{String.fromCharCode(65+i)}. {opt}</div>)}
@@ -737,7 +737,7 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
             {answerRevealed&&(
               <div style={{animation:"revealPop .6s cubic-bezier(.17,.67,.35,1.3)"}}>
                 {slide.question.type==="music"?(
-                  <div style={{display:"inline-flex",flexDirection:"column",gap:12}}>
+                  <div style={{display:"inline-flex",flexDirection:"column",gap:12,alignItems:"center"}}>
                     <div style={{padding:"20px 40px",borderRadius:16,background:"linear-gradient(135deg,#FF6B9D22,#C850C022)",border:`2px solid ${T.pink}`}}>
                       <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2,color:T.pink,marginBottom:6}}>Artist (1 pt)</div>
                       <div style={{fontFamily:dFont,fontSize:36,color:T.pink}}>{slide.question.artist}</div>
@@ -746,6 +746,7 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
                       <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2,color:T.grn,marginBottom:6}}>Song Title (1 pt)</div>
                       <div style={{fontFamily:dFont,fontSize:36,color:T.grn}}>{slide.question.songTitle}</div>
                     </div>
+                    {hasYTAnswer&&<div style={{marginTop:8}}><YTPlayer key={`a-${slide.question.id}`} variant="answer" videoId={musicYtId} start={slide.question.ytStart} end={slide.question.ytEnd}/></div>}
                   </div>
                 ):(
                   <div style={{display:"inline-block",padding:"24px 48px",borderRadius:20,background:"linear-gradient(135deg,#43E97B22,#38F9D722)",border:`2px solid ${T.grn}`}}>
@@ -757,14 +758,11 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
                 {/* Player results with override */}
                 {players.length>0&&(
                   <div style={{marginTop:32,width:"100%",maxWidth:700,marginLeft:"auto",marginRight:"auto"}}>
-                    <div style={{fontSize:13,color:T.mut,marginBottom:12,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                      Player Answers <span style={{fontSize:11,opacity:.6}}>(click to override)</span>
-                    </div>
+                    <div style={{fontSize:13,color:T.mut,marginBottom:12}}>Player Answers</div>
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {players.map(p=>{
                         const ans=p.answers?.[slide.question.id];
                         const pts=getPoints(slide.question,p.id,ans);
-                        const autopts=scoreAnswer(slide.question,ans);
                         const mp=maxPoints(slide.question);
                         const isOverridden=(`${slide.question.id}:${p.id}` in overrides);
                         const color=pts===mp?T.grn:pts>0?T.gold:T.pink;
@@ -774,17 +772,11 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
                         else if(ans) display=String(ans);
                         else display="No answer";
                         return <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",borderRadius:12,background:`${color}11`,border:`1px solid ${color}33`,transition:"all .2s"}}>
-                          {/* Override toggle button */}
-                          <button onClick={()=>toggleOverride(slide.question,p.id,ans)} title="Click to change ruling" style={{
-                            width:36,height:36,borderRadius:10,border:`2px solid ${color}`,background:`${color}22`,
-                            color,fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
-                            fontFamily:dFont,transition:"all .15s",flexShrink:0,position:"relative",
-                          }}
-                          onMouseEnter={e=>{e.currentTarget.style.background=`${color}44`;e.currentTarget.style.transform="scale(1.1)"}}
-                          onMouseLeave={e=>{e.currentTarget.style.background=`${color}22`;e.currentTarget.style.transform="scale(1)"}}>
-                            {pts}/{mp}
-                          </button>
-                          {/* Player name */}
+                          <span style={{
+                            minWidth:44,height:36,borderRadius:10,border:`2px solid ${color}`,background:`${color}22`,
+                            color,fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",
+                            fontFamily:dFont,flexShrink:0,
+                          }}>{pts}/{mp}</span>
                           <div style={{flex:1,textAlign:"left"}}>
                             <div style={{fontSize:14,fontWeight:600,color:T.txt,display:"flex",alignItems:"center",gap:6}}>
                               {icon} {p.name}
@@ -792,6 +784,15 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
                             </div>
                             <div style={{fontSize:12,color:T.mut,marginTop:2}}>{display}</div>
                           </div>
+                          <button onClick={()=>toggleOverride(slide.question,p.id,ans)} title="Cycle override: 0 → partial → full" style={{
+                            padding:"8px 14px",borderRadius:10,border:`2px solid ${isOverridden?T.gold:T.cb}`,
+                            background:isOverridden?`${T.gold}22`:"transparent",color:isOverridden?T.gold:T.mut,
+                            fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:font,flexShrink:0,transition:"all .15s",
+                          }}
+                          onMouseEnter={e=>{e.currentTarget.style.borderColor=T.gold;e.currentTarget.style.color=T.gold}}
+                          onMouseLeave={e=>{if(!isOverridden){e.currentTarget.style.borderColor=T.cb;e.currentTarget.style.color=T.mut}}}>
+                            Override
+                          </button>
                         </div>;
                       })}
                     </div>
@@ -879,6 +880,7 @@ function PlayerJoin({onJoin,onBack}){
 function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
   const[gameData,setGameData]=useState(initialGameData);
   const[gameState,setGameState]=useState(null);
+  const[overrides,setOverrides]=useState({});
   const[answers,setAnswers]=useState({});
   const[currentInput,setCurrentInput]=useState("");
   const[musicArtist,setMusicArtist]=useState("");
@@ -889,6 +891,7 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
     const poll=async()=>{
       const st=await storageGet(`game:${gameCode}:state`,true);if(st)setGameState(st);
       const d=await storageGet(`game:${gameCode}:host`,true);if(d)setGameData(d);
+      const ov=await storageGet(`game:${gameCode}:overrides`,true);if(ov)setOverrides(ov);
     };
     poll();const iv=setInterval(poll,1500);return()=>clearInterval(iv);
   },[gameCode]);
@@ -982,31 +985,40 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
         {phase==="answer"&&currentQ&&(
           <div style={{textAlign:"center",width:"100%",maxWidth:500}}>
             <p style={{fontSize:14,color:T.mut,marginBottom:16}}>{currentQ.text}</p>
-            {currentQ.type==="music"?(
-              <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center",marginBottom:16}}>
-                <div style={{padding:"16px 28px",borderRadius:14,background:`${T.pink}15`,border:`2px solid ${T.pink}`,width:"100%"}}>
-                  <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:2,color:T.pink,marginBottom:4}}>Artist</div>
-                  <div style={{fontFamily:dFont,fontSize:22,color:T.pink}}>{currentQ.artist}</div>
-                </div>
-                <div style={{padding:"16px 28px",borderRadius:14,background:`${T.grn}15`,border:`2px solid ${T.grn}`,width:"100%"}}>
-                  <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:2,color:T.grn,marginBottom:4}}>Song</div>
-                  <div style={{fontFamily:dFont,fontSize:22,color:T.grn}}>{currentQ.songTitle}</div>
-                </div>
+            {gameState.answerRevealed!==true?(
+              <div style={{padding:32,textAlign:"center"}}>
+                <div style={{fontSize:40,marginBottom:12,animation:"pulse 2s infinite"}}>🔒</div>
+                <div style={{fontFamily:dFont,fontSize:18,color:T.mut}}>Waiting for host to reveal the answer...</div>
               </div>
             ):(
-              <div style={{padding:"20px 32px",borderRadius:16,background:`${T.grn}15`,border:`2px solid ${T.grn}`,marginBottom:16}}>
-                <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2,color:T.grn,marginBottom:6}}>Answer</div>
-                <div style={{fontFamily:dFont,fontSize:28,color:T.grn}}>{currentQ.display||currentQ.answer}</div>
-              </div>
+              <>
+                {currentQ.type==="music"?(
+                  <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center",marginBottom:16}}>
+                    <div style={{padding:"16px 28px",borderRadius:14,background:`${T.pink}15`,border:`2px solid ${T.pink}`,width:"100%"}}>
+                      <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:2,color:T.pink,marginBottom:4}}>Artist</div>
+                      <div style={{fontFamily:dFont,fontSize:22,color:T.pink}}>{currentQ.artist}</div>
+                    </div>
+                    <div style={{padding:"16px 28px",borderRadius:14,background:`${T.grn}15`,border:`2px solid ${T.grn}`,width:"100%"}}>
+                      <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:2,color:T.grn,marginBottom:4}}>Song</div>
+                      <div style={{fontFamily:dFont,fontSize:22,color:T.grn}}>{currentQ.songTitle}</div>
+                    </div>
+                  </div>
+                ):(
+                  <div style={{padding:"20px 32px",borderRadius:16,background:`${T.grn}15`,border:`2px solid ${T.grn}`,marginBottom:16}}>
+                    <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2,color:T.grn,marginBottom:6}}>Answer</div>
+                    <div style={{fontFamily:dFont,fontSize:28,color:T.grn}}>{currentQ.display||currentQ.answer}</div>
+                  </div>
+                )}
+                {answers[currentQ.id]&&(()=>{
+                  const pts=getEffectivePoints(currentQ,playerId,answers[currentQ.id],overrides);const mp=maxPoints(currentQ);
+                  const color=pts===mp?T.grn:pts>0?T.gold:T.pink;
+                  return <div style={{padding:"12px 20px",borderRadius:12,fontSize:14,background:`${color}22`,border:`1px solid ${color}44`,color}}>
+                    {pts===mp?"✓ Full marks!":pts>0?`½ Partial — ${pts}/${mp} pts`:"✗ No points"}{" "}
+                    {currentQ.type==="music"&&typeof answers[currentQ.id]==="object"&&<span style={{opacity:.7}}>({answers[currentQ.id].artist||"—"} / {answers[currentQ.id].songTitle||"—"})</span>}
+                  </div>;
+                })()}
+              </>
             )}
-            {answers[currentQ.id]&&(()=>{
-              const pts=scoreAnswer(currentQ,answers[currentQ.id]);const mp=maxPoints(currentQ);
-              const color=pts===mp?T.grn:pts>0?T.gold:T.pink;
-              return <div style={{padding:"12px 20px",borderRadius:12,fontSize:14,background:`${color}22`,border:`1px solid ${color}44`,color}}>
-                {pts===mp?"✓ Full marks!":pts>0?`½ Partial — ${pts}/${mp} pts`:"✗ No points"}{" "}
-                {currentQ.type==="music"&&typeof answers[currentQ.id]==="object"&&<span style={{opacity:.7}}>({answers[currentQ.id].artist||"—"} / {answers[currentQ.id].songTitle||"—"})</span>}
-              </div>;
-            })()}
           </div>
         )}
 
@@ -1017,7 +1029,7 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
             <p style={{color:T.mut,fontSize:14}}>Check the host screen for final scores</p>
             {(()=>{
               const tp=(gameData?.rounds||[]).reduce((s,r)=>s+r.questions.reduce((ss,q)=>ss+maxPoints(q),0),0);
-              let my=0;(gameData?.rounds||[]).forEach(r=>r.questions.forEach(q=>{my+=scoreAnswer(q,answers[q.id])}));
+              let my=0;(gameData?.rounds||[]).forEach(r=>r.questions.forEach(q=>{my+=getEffectivePoints(q,playerId,answers[q.id],overrides)}));
               return <div style={{...cSty,marginTop:20}}><div style={{fontFamily:dFont,fontSize:36,color:T.gold}}>{my}<span style={{fontSize:18,color:T.mut}}>/{tp}</span></div><div style={{fontSize:13,color:T.mut,marginTop:4}}>Your Score</div></div>;
             })()}
           </div>
@@ -1044,7 +1056,7 @@ export default function TriviaApp(){
   useEffect(()=>{storageSet("trivia:draft",rounds)},[rounds]);
   useEffect(()=>{(async()=>{const s=await storageGet("trivia:draft");if(s&&s.length>0)setRounds(s)})()},[]);
 
-  function startHostLobby(){const c=genCode();setGameCode(c);setPlayers([]);setSlideIndex(0);storageSet(`game:${c}:host`,{rounds},true);setScreen("host-lobby")}
+  function startHostLobby(){const c=genCode();setGameCode(c);setPlayers([]);setSlideIndex(0);storageSet(`game:${c}:host`,{rounds},true);storageSet(`game:${c}:overrides`,{},true);setScreen("host-lobby")}
 
   useEffect(()=>{
     if(screen!=="host-lobby"&&screen!=="host-game")return;if(!gameCode)return;
@@ -1055,13 +1067,6 @@ export default function TriviaApp(){
     };
     poll();const iv=setInterval(poll,2000);return()=>clearInterval(iv);
   },[screen,gameCode]);
-
-  useEffect(()=>{
-    if(screen!=="host-game"||!gameCode)return;
-    const slides=buildSlides(rounds,false);
-    const cur=slides[slideIndex];
-    if(cur)storageSet(`game:${gameCode}:state`,cur,true);
-  },[slideIndex,screen,gameCode,rounds]);
 
   function startGame(){setSlideIndex(0);setScreen("host-game")}
   function endGame(){storageSet(`game:${gameCode}:state`,{type:"results"},true);setScreen("home")}
