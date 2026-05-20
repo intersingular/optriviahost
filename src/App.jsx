@@ -202,13 +202,14 @@ function Confetti({active}){
 
 // ─── YouTube Player ──────────────────────
 // variant "compact" = host question slide (audio only UI); "answer" = answer slide with visible video
-function YTPlayer({videoId,start,end,variant="compact"}){
+// enforceEnd: when false, the end timestamp is ignored and the clip plays until host stops it
+function YTPlayer({videoId,start,end,variant="compact",enforceEnd=true}){
   const[status,setStatus]=useState("idle"); // idle | playing | stopped
   const playerRef=useRef(null);
   const containerRef=useRef(null);
   const timerRef=useRef(null);
   const startSec=parseTime(start)||0;
-  const endSec=parseTime(end);
+  const endSec=enforceEnd?parseTime(end):null;
   const showVideo=variant==="answer";
 
   useEffect(()=>{
@@ -578,7 +579,7 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
   const musicQ=slide.question?.type==="music"?slide.question:null;
   const musicYtId=musicQ?.ytUrl?extractYTId(musicQ.ytUrl):null;
   const hasYTQuestion=slide.type==="question"&&musicYtId;
-  const hasYTAnswer=slide.type==="answer"&&answerRevealed&&musicYtId;
+  const hasYTAnswer=slide.type==="answer"&&musicYtId;
 
   return(
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:font,color:T.txt,position:"relative",overflow:"hidden"}}>
@@ -731,6 +732,13 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
               {slide.question.text}
             </h2>
 
+            {/* Music clip is playable before the answer reveal */}
+            {hasYTAnswer&&(
+              <div style={{display:"flex",justifyContent:"center",marginBottom:24}}>
+                <YTPlayer key={`a-${slide.question.id}`} variant="answer" enforceEnd={false} videoId={musicYtId} start={slide.question.ytStart} end={slide.question.ytEnd}/>
+              </div>
+            )}
+
             {/* Answer — only shown after reveal click */}
             {answerRevealed&&(
               <div style={{animation:"revealPop .6s cubic-bezier(.17,.67,.35,1.3)"}}>
@@ -744,7 +752,6 @@ function HostPresentation({rounds,gameCode,players,slideIndex,setSlideIndex,onEn
                       <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2,color:T.grn,marginBottom:6}}>Song Title (1 pt)</div>
                       <div style={{fontFamily:dFont,fontSize:36,color:T.grn}}>{slide.question.songTitle}</div>
                     </div>
-                    {hasYTAnswer&&<div style={{marginTop:8}}><YTPlayer key={`a-${slide.question.id}`} variant="answer" videoId={musicYtId} start={slide.question.ytStart} end={slide.question.ytEnd}/></div>}
                   </div>
                 ):(
                   <div style={{display:"inline-block",padding:"24px 48px",borderRadius:20,background:"linear-gradient(135deg,#43E97B22,#38F9D722)",border:`2px solid ${T.grn}`}}>
@@ -952,9 +959,9 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
               currentQ.type==="choice"&&currentQ.options?(
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
                   {currentQ.options.map((opt,i)=>(
-                    <button key={i} onClick={()=>submitAnswer(currentQ.id,opt)} style={{...cSty,cursor:"pointer",textAlign:"left",fontSize:16,fontWeight:600,display:"flex",alignItems:"center",gap:12,transition:"all .2s"}}
+                    <button key={i} onClick={()=>submitAnswer(currentQ.id,opt)} style={{...cSty,color:T.txt,fontFamily:font,cursor:"pointer",textAlign:"left",fontSize:16,fontWeight:600,display:"flex",alignItems:"center",gap:12,transition:"all .2s"}}
                     onMouseEnter={e=>e.currentTarget.style.borderColor=T.acc} onMouseLeave={e=>e.currentTarget.style.borderColor=T.cb}>
-                      <span style={{width:32,height:32,borderRadius:8,background:T.grad,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontFamily:dFont,flexShrink:0}}>{String.fromCharCode(65+i)}</span>{opt}
+                      <span style={{width:32,height:32,borderRadius:8,background:T.grad,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontFamily:dFont,color:"#fff",flexShrink:0}}>{String.fromCharCode(65+i)}</span>{opt}
                     </button>
                   ))}
                 </div>
