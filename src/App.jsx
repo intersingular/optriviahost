@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { ref, set, get } from "firebase/database";
 import { ref as sref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import QRCode from "qrcode";
 import { db, storage } from "./firebase";
 
 /* ═══════════════════════════════════════════
@@ -183,6 +184,9 @@ function buildSlides(rounds, includeObj=true, cover=null) {
         s.push({type:"answer",...(includeObj?{round,question:q}:{}),roundIdx:ri,questionId:q.id,questionIdx:qi});
       });
     });
+    // Insert a mid-game leaderboard after every pair except the last.
+    // For a 4-round game this puts it right after Round 2 answers.
+    if(pi<pairs.length-1) s.push({type:"leaderboard",pairIdx:pi});
   });
   s.push({type:"results"});
   return s;
@@ -214,6 +218,45 @@ async function storageList(prefix, sh=false) {
     snap.forEach(child => { keys.push(prefix + child.key); });
     return keys;
   } catch(e) { return []; }
+}
+
+// ─── Session + URL helpers ───────────────
+// Persisted in localStorage so the host or a player can rejoin a room
+// after a refresh, navigation, or closing the tab.
+function lsGet(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch{return null}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
+function lsDel(k){try{localStorage.removeItem(k)}catch{}}
+const SESSION_HOST_KEY=c=>`triviahost:host:${c}`;
+const SESSION_PLAYER_KEY=c=>`triviahost:player:${c}`;
+// Allow short alphanumeric codes — matches genCode() output (4 chars uppercase)
+function parsePathCode(){
+  if(typeof window==="undefined")return null;
+  const m=window.location.pathname.match(/^\/([A-Z0-9]{2,8})$/i);
+  return m?m[1].toUpperCase():null;
+}
+function gameUrl(code){
+  if(typeof window==="undefined")return code;
+  return `${window.location.origin}/${code}`;
+}
+function pushUrl(path){
+  if(typeof window==="undefined")return;
+  if(window.location.pathname===path)return;
+  try{window.history.pushState({},"",path)}catch{}
+}
+
+// ─── QR Code ─────────────────────────────
+function QRDisplay({text,size=192,color="#E8E8F0",bg="#0d0d25"}){
+  const ref=useRef(null);
+  useEffect(()=>{
+    if(!ref.current||!text)return;
+    QRCode.toCanvas(ref.current,text,{
+      width:size,
+      margin:1,
+      color:{dark:color,light:bg},
+      errorCorrectionLevel:"M",
+    }).catch(()=>{});
+  },[text,size,color,bg]);
+  return <canvas ref={ref} width={size} height={size} style={{borderRadius:8,display:"block"}}/>;
 }
 // ─── Confetti ────────────────────────────
 function Confetti({active}){
@@ -579,38 +622,70 @@ function Builder({cover,setCover,rounds,setRounds,onBack,onStartHost}){
 
   return(
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:font,color:T.txt}}>
-      <style>{globalCSS}</style>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 24px",borderBottom:`1px solid ${T.cb}`}}>
+      <style>{globalCSS}{`
+        .builder-shell{display:flex;min-height:calc(100vh - 65px)}
+        .builder-aside{width:240px;border-right:1px solid ${T.cb};padding:16px;flex-shrink:0;overflow-y:auto;max-height:calc(100vh - 65px);box-sizing:border-box}
+        .builder-main{flex:1;padding:24px;overflow-y:auto;max-height:calc(100vh - 65px);min-width:0;box-sizing:border-box}
+        .builder-aside-sec{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:${T.mut};margin-bottom:8px}
+        .builder-aside-item{padding:10px 14px;border-radius:12px;cursor:pointer;margin-bottom:6px;min-width:0}
+        .builder-newround{margin-top:8px}
+        .builder-newround-btn{width:100%;padding:10px;background:none;border:1px dashed ${T.cb};border-radius:12px;color:${T.mut};cursor:pointer;font-family:${font};font-size:13px;margin-top:4px;box-sizing:border-box}
+        @media (max-width:760px){
+          .builder-shell{flex-direction:column}
+          .builder-aside{
+            width:100%;max-height:none;border-right:none;border-bottom:1px solid ${T.cb};
+            padding:10px 12px;overflow-x:auto;overflow-y:hidden;
+            display:flex;gap:8px;align-items:stretch;
+          }
+          .builder-aside-sec{display:none}
+          .builder-aside-item{
+            margin-bottom:0;flex-shrink:0;min-width:150px;max-width:220px;
+            white-space:nowrap;padding:8px 12px;
+          }
+          .builder-aside-item .builder-aside-item-sub{
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+          }
+          .builder-newround{margin-top:0;flex-shrink:0;min-width:160px;align-self:center}
+          .builder-newround-btn{margin-top:0;padding:8px 12px;white-space:nowrap}
+          .builder-main{padding:16px;max-height:none;flex:1 1 auto}
+        }
+      `}</style>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 24px",borderBottom:`1px solid ${T.cb}`,gap:12,flexWrap:"wrap"}}>
         <button onClick={onBack} style={{background:"none",border:"none",color:T.mut,cursor:"pointer",fontFamily:font,fontSize:14}}>← Back</button>
         <h2 style={{fontFamily:dFont,fontSize:22,margin:0}}><GT>Trivia Builder</GT></h2>
         <Btn onClick={onStartHost} variant="gold" style={{fontSize:13,padding:"10px 20px"}}>▶ Host This</Btn>
       </div>
-      <div style={{display:"flex",minHeight:"calc(100vh - 65px)"}}>
-        {/* Sidebar */}
-        <div style={{width:240,borderRight:`1px solid ${T.cb}`,padding:16,flexShrink:0,overflowY:"auto"}}>
-          <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:1,color:T.mut,marginBottom:8}}>Intro</div>
-          <div onClick={()=>setActiveRound(-1)} style={{padding:"10px 14px",borderRadius:12,marginBottom:14,cursor:"pointer",background:activeRound===-1?"#1e1e45":"transparent",border:activeRound===-1?`1px solid ${T.gold}55`:"1px solid transparent"}}>
+      <div className="builder-shell">
+        {/* Sidebar — vertical list on desktop, horizontal chip-strip on mobile */}
+        <div className="builder-aside">
+          <div className="builder-aside-sec">Intro</div>
+          <div className="builder-aside-item" onClick={()=>setActiveRound(-1)} style={{background:activeRound===-1?"#1e1e45":"transparent",border:activeRound===-1?`1px solid ${T.gold}55`:"1px solid transparent",marginBottom:14}}>
             <div style={{fontSize:14,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
               <span>{cover.emoji||"🎉"}</span><span>Cover Slide</span>
             </div>
-            <div style={{fontSize:11,color:T.mut,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{cover.title||"Untitled"}</div>
+            <div className="builder-aside-item-sub" style={{fontSize:11,color:T.mut,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{cover.title||"Untitled"}</div>
           </div>
-          <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:1,color:T.mut,marginBottom:12}}>Rounds</div>
+          <div className="builder-aside-sec" style={{marginBottom:12}}>Rounds</div>
           {rounds.map((r,i)=>(
-            <div key={r.id} onClick={()=>{setActiveRound(i);setShowRoundSettings(false);setEditingQ(null)}} style={{padding:"10px 14px",borderRadius:12,marginBottom:6,cursor:"pointer",background:i===activeRound?"#1e1e45":"transparent",border:i===activeRound?`1px solid ${T.acc}44`:"1px solid transparent"}}>
-              <div style={{fontSize:14,fontWeight:600,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span>{r.emoji} {r.name}</span>
-                {rounds.length>1&&<span onClick={e=>{e.stopPropagation();deleteRound(i)}} style={{fontSize:11,color:T.mut,cursor:"pointer"}}>✕</span>}
+            <div key={r.id} className="builder-aside-item" onClick={()=>{setActiveRound(i);setShowRoundSettings(false);setEditingQ(null)}} style={{background:i===activeRound?"#1e1e45":"transparent",border:i===activeRound?`1px solid ${T.acc}44`:"1px solid transparent"}}>
+              <div style={{fontSize:14,fontWeight:600,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{r.emoji} {r.name}</span>
+                {rounds.length>1&&<span onClick={e=>{e.stopPropagation();deleteRound(i)}} style={{fontSize:11,color:T.mut,cursor:"pointer",flexShrink:0}}>✕</span>}
               </div>
-              <div style={{fontSize:11,color:T.mut,marginTop:2}}>{r.questions.length} questions · {r.questions.reduce((s,q)=>s+maxPoints(q,r),0)} pts</div>
+              <div className="builder-aside-item-sub" style={{fontSize:11,color:T.mut,marginTop:2}}>{r.questions.length} questions · {r.questions.reduce((s,q)=>s+maxPoints(q,r),0)} pts</div>
             </div>
           ))}
-          {showAddRound?(<div style={{marginTop:8}}><Inp value={newRoundName} onChange={setNewRoundName} placeholder="Round name..."/><div style={{display:"flex",gap:6,marginTop:6}}><Btn onClick={addRound} style={{fontSize:12,padding:"6px 14px",flex:1}}>Add</Btn><Btn onClick={()=>setShowAddRound(false)} variant="ghost" style={{fontSize:12,padding:"6px 14px"}}>✕</Btn></div></div>):
-          (<button onClick={()=>setShowAddRound(true)} style={{width:"100%",padding:10,background:"none",border:`1px dashed ${T.cb}`,borderRadius:12,color:T.mut,cursor:"pointer",fontFamily:font,fontSize:13,marginTop:4}}>+ Add Round</button>)}
+          <div className="builder-newround">
+            {showAddRound?(
+              <div><Inp value={newRoundName} onChange={setNewRoundName} placeholder="Round name..."/><div style={{display:"flex",gap:6,marginTop:6}}><Btn onClick={addRound} style={{fontSize:12,padding:"6px 14px",flex:1}}>Add</Btn><Btn onClick={()=>setShowAddRound(false)} variant="ghost" style={{fontSize:12,padding:"6px 14px"}}>✕</Btn></div></div>
+            ):(
+              <button onClick={()=>setShowAddRound(true)} className="builder-newround-btn">+ Add Round</button>
+            )}
+          </div>
         </div>
 
         {/* Edit area */}
-        <div style={{flex:1,padding:24,overflowY:"auto",maxHeight:"calc(100vh - 65px)"}}>
+        <div className="builder-main">
           {activeRound===-1?(<>
             <h3 style={{fontFamily:dFont,fontSize:26,margin:"0 0 6px"}}><GT>Cover Slide</GT></h3>
             <p style={{color:T.mut,fontSize:13,marginBottom:20}}>This is the first slide your audience sees when you start the game.</p>
@@ -634,8 +709,8 @@ function Builder({cover,setCover,rounds,setRounds,onBack,onStartHost}){
             </div>
             {showRoundSettings&&(
               <div style={{...cSty,marginBottom:20,background:"#0d0d25",border:`1px solid ${T.acc}33`}}>
-                <div style={{display:"flex",gap:10,marginBottom:10}}>
-                  <div style={{flex:1}}><label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Round Name</label><Inp value={round.name||""} onChange={v=>updateRound({name:v})} placeholder="Round name"/></div>
+                <div style={{display:"flex",gap:10,marginBottom:10,flexWrap:"wrap"}}>
+                  <div style={{flex:"1 1 200px",minWidth:160}}><label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Round Name</label><Inp value={round.name||""} onChange={v=>updateRound({name:v})} placeholder="Round name"/></div>
                   <div style={{flex:"0 0 100px"}}><label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Emoji</label><Inp value={round.emoji||""} onChange={v=>updateRound({emoji:v})} placeholder="❓" style={{fontSize:22,textAlign:"center"}}/></div>
                   <div style={{flex:"0 0 130px"}}>
                     <label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Points / question</label>
@@ -736,19 +811,40 @@ function Builder({cover,setCover,rounds,setRounds,onBack,onStartHost}){
 function HostLobby({rounds,gameCode,players,onStart,onBack}){
   const totalPts=rounds.reduce((s,r)=>s+r.questions.reduce((ss,q)=>ss+maxPoints(q,r),0),0);
   const totalQ=rounds.reduce((s,r)=>s+r.questions.length,0);
+  const url=gameUrl(gameCode);
+  const[copied,setCopied]=useState(false);
+  function copyUrl(){
+    try{
+      navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(()=>setCopied(false),1500);
+    }catch{}
+  }
   return(
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:font,color:T.txt,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
       <style>{globalCSS}{`@keyframes pulse{0%,100%{opacity:.7}50%{opacity:1}}`}</style>
       <button onClick={onBack} style={{position:"absolute",top:20,left:20,background:"none",border:"none",color:T.mut,cursor:"pointer",fontFamily:font}}>← Back</button>
       <div style={{fontSize:48,marginBottom:8}}>🎮</div>
       <h2 style={{fontFamily:dFont,fontSize:32,margin:"0 0 8px"}}><GT>Game Lobby</GT></h2>
-      <p style={{color:T.mut,fontSize:14,marginBottom:32}}>{rounds.length} rounds · {totalQ} questions · {totalPts} total pts</p>
-      <div style={{...cSty,textAlign:"center",marginBottom:24,minWidth:320}}>
-        <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2,color:T.mut,marginBottom:8}}>Join Code</div>
-        <div style={{fontFamily:dFont,fontSize:56,letterSpacing:8,background:T.grad,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{gameCode}</div>
-        <div style={{fontSize:12,color:T.mut,marginTop:8}}>Players enter this code to join</div>
+      <p style={{color:T.mut,fontSize:14,marginBottom:24}}>{rounds.length} rounds · {totalQ} questions · {totalPts} total pts</p>
+
+      {/* Join section: QR + code + URL */}
+      <div style={{...cSty,marginBottom:24,width:"100%",maxWidth:560,display:"flex",gap:24,alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
+        <div style={{padding:8,background:"#0d0d25",borderRadius:12,border:`1px solid ${T.cb}`,flexShrink:0}}>
+          <QRDisplay text={url} size={176} color="#E8E8F0" bg="#0d0d25"/>
+        </div>
+        <div style={{flex:"1 1 220px",minWidth:200,textAlign:"center"}}>
+          <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2,color:T.mut,marginBottom:6}}>Join Code</div>
+          <div style={{fontFamily:dFont,fontSize:52,letterSpacing:8,background:T.grad,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",lineHeight:1}}>{gameCode}</div>
+          <div style={{fontSize:11,color:T.mut,marginTop:10,wordBreak:"break-all",fontFamily:font}}>{url}</div>
+          <button onClick={copyUrl} style={{marginTop:10,padding:"6px 14px",borderRadius:8,background:copied?`${T.grn}33`:`${T.acc}22`,border:`1px solid ${copied?T.grn:T.acc}44`,color:copied?T.grn:T.acc,cursor:"pointer",fontFamily:font,fontSize:12,fontWeight:600}}>
+            {copied?"✓ Copied!":"📋 Copy Link"}
+          </button>
+          <div style={{fontSize:11,color:T.mut,marginTop:8,lineHeight:1.4}}>Players: scan the QR or open the link.</div>
+        </div>
       </div>
-      <div style={{...cSty,marginBottom:24,minWidth:320}}>
+
+      <div style={{...cSty,marginBottom:24,minWidth:320,width:"100%",maxWidth:560}}>
         <div style={{fontSize:12,color:T.mut,marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
           <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:T.grn,animation:"pulse 2s infinite"}}/>{players.length} player{players.length!==1?"s":""} connected
         </div>
@@ -770,7 +866,7 @@ function SlideNavModal({slides,slideIndex,onJump,onClose}){
   const anchorIdx=(()=>{
     for(let i=slideIndex;i>=0;i--){
       const t=slides[i]?.type;
-      if(t==="cover"||t==="round-title"||t==="divider"||t==="results") return i;
+      if(t==="cover"||t==="round-title"||t==="divider"||t==="leaderboard"||t==="results") return i;
     }
     return 0;
   })();
@@ -813,11 +909,13 @@ function SlideNavModal({slides,slideIndex,onJump,onClose}){
               section="answer";
             }else if(s.type==="divider"){
               icon="📝"; label="Answer Time!"; section="divider";
+            }else if(s.type==="leaderboard"){
+              icon="📊"; label="Halfway Standings"; section="leaderboard";
             }else if(s.type==="results"){
               icon="🏆"; label="Final Scores"; section="results";
             }
-            const isHeader=s.type==="cover"||s.type==="round-title"||s.type==="divider"||s.type==="results";
-            const sColor=section==="answer"?T.grn:section==="divider"?T.gold:section==="results"?T.gold:section==="cover"?T.gold:T.txt;
+            const isHeader=s.type==="cover"||s.type==="round-title"||s.type==="divider"||s.type==="leaderboard"||s.type==="results";
+            const sColor=section==="answer"?T.grn:section==="divider"?T.gold:section==="leaderboard"?T.gold:section==="results"?T.gold:section==="cover"?T.gold:T.txt;
             return (
               <button key={i} ref={el=>itemRefs.current[i]=el} onClick={()=>onJump(i)} style={{
                 display:"flex",alignItems:"center",gap:8,padding:isHeader?"10px 12px":"6px 12px",
@@ -859,8 +957,41 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
   const progress=((slideIndex+1)/slides.length)*100;
   const isAnswer=slide.type==="answer";
   const isResults=slide.type==="results";
+  const isQuestion=slide.type==="question";
 
   useEffect(()=>{setAnswerRevealed(false);setResultsRevealed(false)},[slideIndex]);
+
+  // Auto-advance: when on a question slide and every connected player has
+  // submitted an answer, move on after a brief pause for the host to see.
+  // Music questions are intentionally excluded — players are typing artist
+  // AND song separately, and we don't want to bail before the slow typer
+  // has finished the second field.
+  // Compute allAnswered with useMemo so the boolean only changes when it
+  // really transitions — otherwise the player-poll (every ~2s) would keep
+  // clearing & re-arming the timeout and the advance would never fire.
+  const isMusicQ=isQuestion&&slide.question?.type==="music";
+  const allAnswered=useMemo(()=>{
+    if(!isQuestion||!slide.question||isMusicQ||players.length===0)return false;
+    const qId=slide.question.id;
+    return players.every(p=>{
+      const a=p.answers?.[qId];
+      if(a===undefined||a===null)return false;
+      if(typeof a==="object")return (a.artist&&a.artist.trim())||(a.songTitle&&a.songTitle.trim());
+      return String(a).trim()!=="";
+    });
+  },[isQuestion,isMusicQ,slide.question?.id,players]);
+
+  const[autoAdvancePending,setAutoAdvancePending]=useState(false);
+  useEffect(()=>{
+    if(!allAnswered){setAutoAdvancePending(false);return;}
+    setAutoAdvancePending(true);
+    const t=setTimeout(()=>{
+      setSlideIndex(i=>Math.min(i+1,slides.length-1));
+      setAutoAdvancePending(false);
+    },2000);
+    return()=>{clearTimeout(t)};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[allAnswered,slideIndex,slides.length]);
 
   // Sync slide + reveal state to players (Firebase rejects `undefined` values, so omit them)
   useEffect(()=>{
@@ -870,6 +1001,7 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
     if(slide.questionId!==undefined) payload.questionId=slide.questionId;
     if(slide.questionIdx!==undefined) payload.questionIdx=slide.questionIdx;
     if(slide.phase!==undefined) payload.phase=slide.phase;
+    if(slide.pairIdx!==undefined) payload.pairIdx=slide.pairIdx;
     if(slide.type==="answer") payload.answerRevealed=answerRevealed;
     storageSet(`game:${gameCode}:state`,payload,true);
   },[gameCode,slide,slideIndex,answerRevealed]);
@@ -942,6 +1074,13 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
         @keyframes slideIn{from{opacity:0;transform:translateY(40px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
         @keyframes glow{0%,100%{text-shadow:0 0 30px #C850C066}50%{text-shadow:0 0 60px #C850C0aa}}
         @keyframes revealPop{from{opacity:0;transform:scale(.7) rotate(-3deg)}to{opacity:1;transform:scale(1) rotate(0)}}
+        @keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
+        /* Host slide container — bulletproof horizontal centering across screen sizes. */
+        .host-slide-root{min-height:100vh;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 40px 100px;position:relative;z-index:10;animation:slideIn .5s ease;box-sizing:border-box}
+        .host-slide-content{width:100%;display:flex;flex-direction:column;align-items:center;text-align:center}
+        .host-slide-content>*{max-width:100%}
+        @media (max-width:900px){.host-slide-root{padding:48px 20px 110px}}
+        @media (max-width:600px){.host-slide-root{padding:40px 14px 110px}}
       `}</style>
       <Confetti active={showConfetti}/>
       <div style={{position:"absolute",inset:0,background:bgs[slideIndex%3],transition:"background 1s"}}/>
@@ -1004,37 +1143,37 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
       {/* Slide — key changes only on slide change so reveal toggles don't remount
           the YTPlayer iframe (which would restart playback). The inner reveal
           blocks have their own pop animation. */}
-      <div key={slideIndex} style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"60px 40px 100px",position:"relative",zIndex:10,animation:"slideIn .5s ease"}}>
+      <div key={slideIndex} className="host-slide-root">
 
         {slide.type==="cover"&&(
-          <div style={{textAlign:"center",maxWidth:900}}>
-            {slide.cover?.image&&<div style={{display:"flex",justifyContent:"center",marginBottom:24}}><img src={slide.cover.image} alt="" style={{maxWidth:"min(640px,90%)",maxHeight:380,objectFit:"contain",borderRadius:24,border:`1px solid ${T.cb}`,boxShadow:"0 4px 40px #00000066"}}/></div>}
+          <div className="host-slide-content" style={{maxWidth:900,margin:"0 auto"}}>
+            {slide.cover?.image&&<div style={{display:"flex",justifyContent:"center",marginBottom:24,width:"100%"}}><img src={slide.cover.image} alt="" style={{maxWidth:"min(640px,90%)",maxHeight:380,objectFit:"contain",borderRadius:24,border:`1px solid ${T.cb}`,boxShadow:"0 4px 40px #00000066"}}/></div>}
             {slide.cover?.emoji&&<div style={{fontSize:72,marginBottom:8}}>{slide.cover.emoji}</div>}
-            <h1 style={{fontFamily:dFont,fontSize:72,margin:0,animation:"glow 3s infinite",lineHeight:1.1}}><GT>{slide.cover?.title||"TriviaHost"}</GT></h1>
+            <h1 style={{fontFamily:dFont,fontSize:"clamp(40px,8vw,72px)",margin:0,animation:"glow 3s infinite",lineHeight:1.1}}><GT>{slide.cover?.title||"TriviaHost"}</GT></h1>
             {slide.cover?.subtitle&&<p style={{color:T.mut,fontSize:20,marginTop:18}}>{slide.cover.subtitle}</p>}
           </div>
         )}
 
         {slide.type==="round-title"&&(
-          <div style={{textAlign:"center"}}>
-            {slide.round.image&&<div style={{display:"flex",justifyContent:"center",marginBottom:20}}><img src={slide.round.image} alt="" style={{maxWidth:"min(520px,90%)",maxHeight:300,objectFit:"contain",borderRadius:20,border:`1px solid ${T.cb}`,boxShadow:"0 4px 30px #00000055"}}/></div>}
+          <div className="host-slide-content" style={{maxWidth:900,margin:"0 auto"}}>
+            {slide.round.image&&<div style={{display:"flex",justifyContent:"center",marginBottom:20,width:"100%"}}><img src={slide.round.image} alt="" style={{maxWidth:"min(520px,90%)",maxHeight:300,objectFit:"contain",borderRadius:20,border:`1px solid ${T.cb}`,boxShadow:"0 4px 30px #00000055"}}/></div>}
             <div style={{fontSize:80,marginBottom:16}}>{slide.round.emoji}</div>
             <div style={{fontSize:14,textTransform:"uppercase",letterSpacing:3,color:T.mut,marginBottom:12}}>
               {slide.phase==="questions"?`Round ${slide.roundIdx+1}`:`Round ${slide.roundIdx+1} — Answers`}
             </div>
-            <h1 style={{fontFamily:dFont,fontSize:56,margin:0,animation:"glow 3s infinite"}}><GT>{slide.round.name}</GT></h1>
+            <h1 style={{fontFamily:dFont,fontSize:"clamp(32px,6vw,56px)",margin:0,animation:"glow 3s infinite"}}><GT>{slide.round.name}</GT></h1>
             <p style={{color:T.mut,marginTop:16,fontSize:18}}>{slide.round.questions.length} question{slide.round.questions.length!==1?"s":""} · {slide.round.questions.reduce((s,q)=>s+maxPoints(q,slide.round),0)} pts</p>
           </div>
         )}
 
         {slide.type==="question"&&(
-          <div style={{textAlign:"center",maxWidth:900}}>
-            <div style={{display:"flex",justifyContent:"center",gap:12,marginBottom:24}}>
+          <div className="host-slide-content" style={{maxWidth:900,margin:"0 auto"}}>
+            <div style={{display:"flex",justifyContent:"center",gap:12,marginBottom:24,flexWrap:"wrap"}}>
               <span style={{fontSize:13,padding:"6px 16px",borderRadius:10,background:`${T.acc}22`,border:`1px solid ${T.acc}44`,color:T.acc}}>{slide.round.emoji} {slide.round.name}</span>
               <span style={{fontSize:13,padding:"6px 16px",borderRadius:10,background:`${T.gold}22`,border:`1px solid ${T.gold}44`,color:T.gold}}>Q{slide.questionIdx+1} of {slide.round.questions.length}</span>
               <span style={{fontSize:13,padding:"6px 16px",borderRadius:10,background:`${T.pink}22`,border:`1px solid ${T.pink}44`,color:T.pink}}>{slide.question.type==="music"?`${maxPoints(slide.question,slide.round)} pts (Artist + Song)`:`${maxPoints(slide.question,slide.round)} pt${maxPoints(slide.question,slide.round)===1?"":"s"}`}</span>
             </div>
-            <h2 style={{fontFamily:dFont,fontSize:38,lineHeight:1.3,margin:"0 0 24px",fontWeight:400}}>{slide.question.text}</h2>
+            <h2 style={{fontFamily:dFont,fontSize:"clamp(22px,3.6vw,38px)",lineHeight:1.3,margin:"0 0 24px",fontWeight:400}}>{slide.question.text}</h2>
             {slide.question.image&&<div style={{display:"flex",justifyContent:"center",marginBottom:16}}><img src={slide.question.image} alt="" style={{maxWidth:"min(560px,90%)",maxHeight:340,objectFit:"contain",borderRadius:16,border:`1px solid ${T.cb}`,boxShadow:"0 4px 30px #00000055"}}/></div>}
             {slide.question.hint&&!hasYTQuestion&&<p style={{color:T.pink,fontSize:16,fontStyle:"italic"}}>💡 {slide.question.hint}</p>}
             {hasYTQuestion&&<div style={{marginTop:8,marginBottom:16,display:"flex",justifyContent:"center"}}><YTPlayer key={`q-${slide.question.id}`} videoId={musicYtId} start={slide.question.ytStart} end={slide.question.ytEnd}/></div>}
@@ -1043,18 +1182,32 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
                 {slide.question.options.map((opt,i)=><div key={i} style={{padding:"14px 28px",borderRadius:14,background:T.card,border:`2px solid ${T.cb}`,fontSize:20,fontWeight:600,fontFamily:dFont}}>{String.fromCharCode(65+i)}. {opt}</div>)}
               </div>
             )}
-            {players.length>0&&<div style={{marginTop:32,fontSize:14,color:T.mut}}>{players.filter(p=>p.answers?.[slide.question.id]).length}/{players.length} answered</div>}
+            {players.length>0&&(()=>{
+              const answeredCount=players.filter(p=>{
+                const a=p.answers?.[slide.question.id];
+                if(a===undefined||a===null)return false;
+                if(typeof a==="object")return (a.artist&&a.artist.trim())||(a.songTitle&&a.songTitle.trim());
+                return String(a).trim()!=="";
+              }).length;
+              const all=answeredCount===players.length;
+              return (
+                <div style={{marginTop:32,fontSize:14,color:all?T.grn:T.mut,display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontWeight:all?600:400}}>
+                  {answeredCount}/{players.length} answered
+                  {all&&autoAdvancePending&&<span style={{fontSize:12,padding:"4px 10px",borderRadius:8,background:`${T.grn}22`,border:`1px solid ${T.grn}44`,animation:"pulse 1.5s infinite"}}>auto-advancing…</span>}
+                </div>
+              );
+            })()}
           </div>
         )}
 
         {slide.type==="answer"&&(
-          <div style={{textAlign:"center",maxWidth:900}}>
-            <div style={{display:"flex",justifyContent:"center",gap:12,marginBottom:20}}>
+          <div className="host-slide-content" style={{maxWidth:1100,margin:"0 auto"}}>
+            <div style={{display:"flex",justifyContent:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
               <span style={{fontSize:13,padding:"6px 16px",borderRadius:10,background:`${T.acc}22`,border:`1px solid ${T.acc}44`,color:T.acc}}>{slide.round.emoji} {slide.round.name}</span>
               <span style={{fontSize:13,padding:"6px 16px",borderRadius:10,background:`${T.grn}22`,border:`1px solid ${T.grn}44`,color:T.grn}}>Answer {slide.questionIdx+1}</span>
             </div>
             {/* Always show the question */}
-            <h2 style={{fontFamily:dFont,fontSize:32,lineHeight:1.4,margin:"0 0 28px",fontWeight:400,color:T.txt,maxWidth:750,marginLeft:"auto",marginRight:"auto"}}>
+            <h2 style={{fontFamily:dFont,fontSize:"clamp(20px,3vw,32px)",lineHeight:1.4,margin:"0 0 28px",fontWeight:400,color:T.txt,maxWidth:750,marginLeft:"auto",marginRight:"auto"}}>
               {slide.question.text}
             </h2>
 
@@ -1098,11 +1251,11 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
                   </div>
                 )}
 
-                {/* Player results with override */}
+                {/* Player results with override — 2-column grid keeps long lists on-screen */}
                 {players.length>0&&(
-                  <div style={{marginTop:32,width:"100%",maxWidth:700,marginLeft:"auto",marginRight:"auto"}}>
+                  <div style={{marginTop:32,width:"100%",maxWidth:1100,marginLeft:"auto",marginRight:"auto"}}>
                     <div style={{fontSize:13,color:T.mut,marginBottom:12}}>Player Answers</div>
-                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    <div style={{display:"grid",gridTemplateColumns:players.length<=1?"1fr":"repeat(auto-fit,minmax(320px,1fr))",gap:8}}>
                       {players.map(p=>{
                         const ans=p.answers?.[slide.question.id];
                         const pts=getPoints(slide.question,p.id,ans,slide.round);
@@ -1114,23 +1267,24 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
                         if(slide.question.type==="music"&&ans&&typeof ans==="object") display=`${ans.artist||"—"} / ${ans.songTitle||"—"}`;
                         else if(ans) display=String(ans);
                         else display="No answer";
-                        return <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",borderRadius:12,background:`${color}11`,border:`1px solid ${color}33`,transition:"all .2s"}}>
+                        return <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:12,background:`${color}11`,border:`1px solid ${color}33`,transition:"all .2s",minWidth:0}}>
                           <span style={{
                             minWidth:44,height:36,borderRadius:10,border:`2px solid ${color}`,background:`${color}22`,
                             color,fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",
                             fontFamily:dFont,flexShrink:0,padding:"0 6px",
                           }}>{pts}/{mp}</span>
-                          <div style={{flex:1,textAlign:"left"}}>
-                            <div style={{fontSize:14,fontWeight:600,color:T.txt,display:"flex",alignItems:"center",gap:6}}>
-                              {icon} {p.name}
-                              {isOverridden&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:`${T.gold}33`,color:T.gold,fontWeight:700}}>OVERRIDE</span>}
+                          <div style={{flex:1,textAlign:"left",minWidth:0}}>
+                            <div style={{fontSize:14,fontWeight:600,color:T.txt,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                              <span style={{flexShrink:0}}>{icon}</span>
+                              <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</span>
+                              {isOverridden&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:`${T.gold}33`,color:T.gold,fontWeight:700,flexShrink:0}}>OVR</span>}
                             </div>
-                            <div style={{fontSize:12,color:T.mut,marginTop:2}}>{display}</div>
+                            <div style={{fontSize:12,color:T.mut,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{display}</div>
                           </div>
                           <button onClick={()=>toggleOverride(slide.question,p.id,ans,slide.round)} title="Cycle override: 0 → partial → full" style={{
-                            padding:"8px 14px",borderRadius:10,border:`2px solid ${isOverridden?T.gold:T.cb}`,
+                            padding:"6px 10px",borderRadius:10,border:`2px solid ${isOverridden?T.gold:T.cb}`,
                             background:isOverridden?`${T.gold}22`:"transparent",color:isOverridden?T.gold:T.mut,
-                            fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:font,flexShrink:0,transition:"all .15s",
+                            fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:font,flexShrink:0,transition:"all .15s",
                           }}
                           onMouseEnter={e=>{e.currentTarget.style.borderColor=T.gold;e.currentTarget.style.color=T.gold}}
                           onMouseLeave={e=>{if(!isOverridden){e.currentTarget.style.borderColor=T.cb;e.currentTarget.style.color=T.mut}}}>
@@ -1153,15 +1307,41 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
         )}
 
         {slide.type==="divider"&&(
-          <div style={{textAlign:"center"}}>
+          <div className="host-slide-content" style={{maxWidth:900,margin:"0 auto"}}>
             <div style={{fontSize:80,marginBottom:16}}>📝</div>
-            <h1 style={{fontFamily:dFont,fontSize:48,margin:0}}><GT>Answer Time!</GT></h1>
+            <h1 style={{fontFamily:dFont,fontSize:"clamp(32px,6vw,48px)",margin:0}}><GT>Answer Time!</GT></h1>
             <p style={{color:T.mut,fontSize:18,marginTop:16}}>Let's see how everyone did...</p>
           </div>
         )}
 
+        {slide.type==="leaderboard"&&(
+          <div className="host-slide-content" style={{maxWidth:700,margin:"0 auto"}}>
+            <div style={{fontSize:56,marginBottom:8}}>📊</div>
+            <h1 style={{fontFamily:dFont,fontSize:40,margin:"0 0 8px"}}><GT>Halfway Standings</GT></h1>
+            <p style={{color:T.mut,fontSize:15,marginBottom:28}}>Rounds 1–{(slide.pairIdx+1)*2} · {totalPts} pts total so far</p>
+            {scores.length===0?<p style={{color:T.mut}}>No players yet</p>:(
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {scores.map((p,i)=>{
+                  const pct=totalPts>0?(p.score/totalPts)*100:0;
+                  const medal=i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`;
+                  return <div key={p.id} style={{...cSty,display:"flex",alignItems:"center",gap:16,border:i===0?`2px solid ${T.gold}`:`1px solid ${T.cb}`,animation:`slideIn .5s ease ${i*.08}s both`}}>
+                    <span style={{fontSize:i<3?28:16,minWidth:38,textAlign:"center",fontFamily:dFont}}>{medal}</span>
+                    <div style={{flex:1,textAlign:"left"}}>
+                      <div style={{fontWeight:700,fontSize:17}}>{p.name}</div>
+                      <div style={{height:6,borderRadius:3,background:"#1a1a3e",marginTop:6,overflow:"hidden"}}>
+                        <div style={{height:"100%",width:`${pct}%`,background:i===0?`linear-gradient(90deg,${T.gold},#FF9A44)`:T.grad,borderRadius:3,transition:"width 1s"}}/>
+                      </div>
+                    </div>
+                    <div style={{fontFamily:dFont,fontSize:22,color:i===0?T.gold:T.txt}}>{p.score}<span style={{fontSize:13,color:T.mut}}>/{totalPts}</span></div>
+                  </div>;
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {slide.type==="results"&&(
-          <div style={{textAlign:"center",maxWidth:600,width:"100%"}}>
+          <div className="host-slide-content" style={{maxWidth:600,margin:"0 auto"}}>
             <div style={{fontSize:64,marginBottom:8}}>🏆</div>
             <h1 style={{fontFamily:dFont,fontSize:44,margin:"0 0 32px"}}><GT>Final Scores</GT></h1>
             {!resultsRevealed?(
@@ -1196,8 +1376,8 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
 // ═══════════════════════════════════════════
 //  PLAYER JOIN
 // ═══════════════════════════════════════════
-function PlayerJoin({onJoin,onBack}){
-  const[code,setCode]=useState("");const[name,setName]=useState("");const[error,setError]=useState("");const[loading,setLoading]=useState(false);
+function PlayerJoin({onJoin,onBack,prefillCode=""}){
+  const[code,setCode]=useState(prefillCode);const[name,setName]=useState("");const[error,setError]=useState("");const[loading,setLoading]=useState(false);
   async function handleJoin(){
     if(!code.trim()||!name.trim()){setError("Enter both a code and your name");return;}
     setLoading(true);setError("");
@@ -1233,7 +1413,16 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
   const[musicArtist,setMusicArtist]=useState("");
   const[musicSong,setMusicSong]=useState("");
 
-  useEffect(()=>{storageSet(`game:${gameCode}:player:${playerId}`,{id:playerId,name:playerName,answers:{}},true)},[]);
+  // On mount: fetch any prior answers (rejoin) BEFORE we start mirroring local
+  // state up. This avoids briefly overwriting a returning player's answers with {}.
+  const[joined,setJoined]=useState(false);
+  useEffect(()=>{(async()=>{
+    const prior=await storageGet(`game:${gameCode}:player:${playerId}`,true);
+    const priorAnswers=prior&&prior.answers&&typeof prior.answers==="object"?prior.answers:{};
+    if(Object.keys(priorAnswers).length>0) setAnswers(priorAnswers);
+    await storageSet(`game:${gameCode}:player:${playerId}`,{id:playerId,name:playerName,answers:priorAnswers},true);
+    setJoined(true);
+  })()},[]);
   useEffect(()=>{
     const poll=async()=>{
       const st=await storageGet(`game:${gameCode}:state`,true);if(st)setGameState(st);
@@ -1242,7 +1431,10 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
     };
     poll();const iv=setInterval(poll,1500);return()=>clearInterval(iv);
   },[gameCode]);
-  useEffect(()=>{storageSet(`game:${gameCode}:player:${playerId}`,{id:playerId,name:playerName,answers},true)},[answers]);
+  useEffect(()=>{
+    if(!joined) return;
+    storageSet(`game:${gameCode}:player:${playerId}`,{id:playerId,name:playerName,answers},true);
+  },[answers,joined]);
 
   const allQ=(gameData?.rounds||[]).flatMap(r=>r.questions.map(q=>({...q,roundName:r.name,roundEmoji:r.emoji})));
   const roundIndex=useMemo(()=>buildRoundIndex(gameData?.rounds||[]),[gameData]);
@@ -1274,10 +1466,12 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
       <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
 
         {phase==="waiting"&&(()=>{
-          let icon="⏳",msg="Waiting for host...";
+          let icon="⏳",msg="Waiting for host...",sub="";
           if(gameState){
             if(gameState.type==="divider"||(gameState.type==="round-title"&&gameState.phase==="answers")){
               icon="📝";msg="Waiting for the answers...";
+            }else if(gameState.type==="leaderboard"){
+              icon="📊";msg="Halfway standings!";sub="Check the host screen.";
             }else if(gameState.type==="round-title"&&gameState.phase==="questions"){
               icon="🎯";msg="Next round starting...";
             }else if(gameState.type==="cover"){
@@ -1286,10 +1480,24 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
               msg="Next question coming...";
             }
           }
+          // Show the player their current score on the leaderboard slide.
+          let myScoreBlock=null;
+          if(gameState&&gameState.type==="leaderboard"){
+            const tp=(gameData?.rounds||[]).reduce((s,r)=>s+r.questions.reduce((ss,q)=>ss+maxPoints(q,r),0),0);
+            let my=0;(gameData?.rounds||[]).forEach(r=>r.questions.forEach(q=>{my+=getEffectivePoints(q,playerId,answers[q.id],overrides,r)}));
+            myScoreBlock=(
+              <div style={{...cSty,marginTop:20,display:"inline-block",minWidth:200}}>
+                <div style={{fontFamily:dFont,fontSize:36,color:T.gold}}>{my}<span style={{fontSize:18,color:T.mut}}>/{tp}</span></div>
+                <div style={{fontSize:13,color:T.mut,marginTop:4}}>Your score so far</div>
+              </div>
+            );
+          }
           return (
             <div style={{textAlign:"center"}}>
               <div style={{fontSize:48,marginBottom:16,animation:"pulse 2s infinite"}}>{icon}</div>
               <h3 style={{fontFamily:dFont,fontSize:24}}><GT>{msg}</GT></h3>
+              {sub&&<p style={{color:T.mut,fontSize:14,marginTop:8}}>{sub}</p>}
+              {myScoreBlock}
             </div>
           );
         })()}
@@ -1306,13 +1514,15 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
               {currentQ.hint&&<p style={{fontSize:13,color:T.pink,marginTop:8,marginBottom:0}}>💡 {currentQ.hint}</p>}
             </div>
             {already?(
-              <div style={{textAlign:"center",padding:24}}>
-                <div style={{fontSize:32,marginBottom:8}}>✅</div>
-                <div style={{fontFamily:dFont,fontSize:18,color:T.grn}}>Answer Submitted!</div>
-                <div style={{fontSize:14,color:T.mut,marginTop:4}}>
+              <div style={{textAlign:"center",padding:"20px 18px",borderRadius:14,background:`${T.acc}11`,border:`1px solid ${T.acc}33`}}>
+                <div style={{fontFamily:dFont,fontSize:18,color:T.txt,letterSpacing:.5}}>Answer submitted</div>
+                <div style={{fontSize:13,color:T.mut,marginTop:6}}>Waiting for the host to move on…</div>
+                <div style={{fontSize:14,color:T.mut,marginTop:10,padding:"6px 12px",background:"#0d0d25",borderRadius:8,display:"inline-block",maxWidth:"100%",wordBreak:"break-word"}}>
                   {currentQ.type==="music"&&typeof already==="object"?`${already.artist||"—"} / ${already.songTitle||"—"}`:String(already)}
                 </div>
-                <button onClick={()=>setAnswers(prev=>{const n={...prev};delete n[currentQ.id];return n})} style={{background:"none",border:"none",color:T.pink,cursor:"pointer",fontFamily:font,fontSize:12,marginTop:8}}>Change answer</button>
+                <div style={{marginTop:10}}>
+                  <button onClick={()=>setAnswers(prev=>{const n={...prev};delete n[currentQ.id];return n})} style={{background:"none",border:"none",color:T.pink,cursor:"pointer",fontFamily:font,fontSize:12,textDecoration:"underline"}}>Change answer</button>
+                </div>
               </div>
             ):(
               currentQ.type==="choice"&&currentQ.options?(
@@ -1418,14 +1628,16 @@ export default function TriviaApp(){
   const[slideIndex,setSlideIndex]=useState(0);
   const[playerGameCode,setPlayerGameCode]=useState("");
   const[playerName,setPlayerName]=useState("");
-  const[playerId]=useState(()=>genId());
+  const[playerId,setPlayerId]=useState(()=>genId());
   const[playerGameData,setPlayerGameData]=useState(null);
   const[draftLoaded,setDraftLoaded]=useState(false);
+  const[rejoinChecked,setRejoinChecked]=useState(false);
+  const[joinPrefillCode,setJoinPrefillCode]=useState("");
 
-  // Load any persisted draft first; only then enable autosave to avoid the initial
-  // PRELOADED_ROUNDS overwriting a saved draft due to effect ordering.
-  // Backward compat: older saved drafts are a plain rounds array.
+  // Boot: load persisted draft (for the builder), then check the URL for a
+  // game code and try to auto-rejoin as host or player.
   useEffect(()=>{(async()=>{
+    // 1. Load builder draft
     const s=await storageGet("trivia:draft");
     if(s){
       if(Array.isArray(s)){
@@ -1435,14 +1647,83 @@ export default function TriviaApp(){
         if(s.cover&&typeof s.cover==="object") setCover({...DEFAULT_COVER,...s.cover});
       }
     }
+
+    // 2. URL-based rejoin: if path is /CODE, look up local sessions and Firebase
+    const pathCode=parsePathCode();
+    if(pathCode){
+      const gameData=await storageGet(`game:${pathCode}:host`,true);
+      const hostSess=lsGet(SESSION_HOST_KEY(pathCode));
+      const playerSess=lsGet(SESSION_PLAYER_KEY(pathCode));
+      if(gameData && hostSess){
+        // Resume as host. Use the absence of `game:CODE:state` to know whether
+        // the host had reached the live game yet (game.start clicked) vs. was
+        // still in the lobby waiting for players.
+        if(gameData.cover) setCover({...DEFAULT_COVER,...gameData.cover});
+        if(Array.isArray(gameData.rounds)) setRounds(gameData.rounds);
+        setGameCode(pathCode);
+        setSlideIndex(Number.isFinite(hostSess.slideIndex)?hostSess.slideIndex:0);
+        const liveState=await storageGet(`game:${pathCode}:state`,true);
+        setScreen(liveState?"host-game":"host-lobby");
+      }else if(gameData && playerSess && playerSess.playerId && playerSess.name){
+        // Resume as player with the same playerId so their answers persist
+        setPlayerId(playerSess.playerId);
+        setPlayerName(playerSess.name);
+        setPlayerGameCode(pathCode);
+        setPlayerGameData(gameData);
+        setScreen("player-game");
+      }else if(gameData){
+        // Game exists but no local session — drop into Join with code prefilled
+        setJoinPrefillCode(pathCode);
+        setScreen("player-join");
+      }else{
+        // Code doesn't match any active game; reset URL
+        pushUrl("/");
+      }
+    }
+
     setDraftLoaded(true);
+    setRejoinChecked(true);
   })()},[]);
+
   useEffect(()=>{
     if(!draftLoaded) return;
     storageSet("trivia:draft",{cover,rounds});
   },[cover,rounds,draftLoaded]);
 
-  function startHostLobby(){const c=genCode();setGameCode(c);setPlayers([]);setSlideIndex(0);storageSet(`game:${c}:host`,{cover,rounds},true);storageSet(`game:${c}:overrides`,{},true);setScreen("host-lobby")}
+  // Persist host's slide position so they can refresh / rejoin mid-game
+  useEffect(()=>{
+    if(screen!=="host-game"||!gameCode)return;
+    lsSet(SESSION_HOST_KEY(gameCode),{slideIndex});
+  },[screen,gameCode,slideIndex]);
+
+  // Browser back/forward: keep the URL in sync with the active screen.
+  // While in a live game, swallow the navigation and re-pin the URL.
+  useEffect(()=>{
+    const handler=()=>{
+      const pathCode=parsePathCode();
+      if(screen==="host-game"&&gameCode){
+        if(pathCode!==gameCode){try{window.history.replaceState({},"",`/${gameCode}`)}catch{}}
+        return;
+      }
+      if(screen==="player-game"&&playerGameCode){
+        if(pathCode!==playerGameCode){try{window.history.replaceState({},"",`/${playerGameCode}`)}catch{}}
+        return;
+      }
+      if(!pathCode){setScreen("home")}
+    };
+    window.addEventListener("popstate",handler);
+    return()=>window.removeEventListener("popstate",handler);
+  },[screen,gameCode,playerGameCode]);
+
+  function startHostLobby(){
+    const c=genCode();
+    setGameCode(c);setPlayers([]);setSlideIndex(0);
+    storageSet(`game:${c}:host`,{cover,rounds},true);
+    storageSet(`game:${c}:overrides`,{},true);
+    lsSet(SESSION_HOST_KEY(c),{slideIndex:0});
+    pushUrl(`/${c}`);
+    setScreen("host-lobby");
+  }
 
   useEffect(()=>{
     if(screen!=="host-lobby"&&screen!=="host-game")return;if(!gameCode)return;
@@ -1455,14 +1736,45 @@ export default function TriviaApp(){
   },[screen,gameCode]);
 
   function startGame(){setSlideIndex(0);setScreen("host-game")}
-  function endGame(){storageSet(`game:${gameCode}:state`,{type:"results"},true);setScreen("home")}
-  function handlePlayerJoin(c,n,d){setPlayerGameCode(c);setPlayerName(n);setPlayerGameData(d);setScreen("player-game")}
+  function endGame(){
+    storageSet(`game:${gameCode}:state`,{type:"results"},true);
+    if(gameCode) lsDel(SESSION_HOST_KEY(gameCode));
+    pushUrl("/");
+    setScreen("home");
+  }
+  function backHomeFromLobby(){
+    if(gameCode) lsDel(SESSION_HOST_KEY(gameCode));
+    pushUrl("/");
+    setScreen("home");
+  }
+  function handlePlayerJoin(c,n,d){
+    setPlayerGameCode(c);setPlayerName(n);setPlayerGameData(d);
+    lsSet(SESSION_PLAYER_KEY(c),{playerId,name:n});
+    pushUrl(`/${c}`);
+    setScreen("player-game");
+  }
+  function handlePlayerLeave(){
+    if(playerGameCode) lsDel(SESSION_PLAYER_KEY(playerGameCode));
+    pushUrl("/");
+    setScreen("home");
+  }
+  function backHomeFromJoin(){
+    pushUrl("/");
+    setJoinPrefillCode("");
+    setScreen("home");
+  }
 
-  if(screen==="home")return <HomeScreen onNavigate={t=>{if(t==="builder")setScreen("builder");else if(t==="host-lobby")startHostLobby();else if(t==="player-join")setScreen("player-join")}}/>;
+  // Block initial render until rejoin check finishes — prevents a flash
+  // of the home screen for users hitting a /CODE link directly.
+  if(!rejoinChecked){
+    return <div style={{minHeight:"100vh",background:T.bg}}/>;
+  }
+
+  if(screen==="home")return <HomeScreen onNavigate={t=>{if(t==="builder")setScreen("builder");else if(t==="host-lobby")startHostLobby();else if(t==="player-join"){pushUrl("/");setScreen("player-join")}}}/>;
   if(screen==="builder")return <Builder cover={cover} setCover={setCover} rounds={rounds} setRounds={setRounds} onBack={()=>setScreen("home")} onStartHost={startHostLobby}/>;
-  if(screen==="host-lobby")return <HostLobby rounds={rounds} gameCode={gameCode} players={players} onStart={startGame} onBack={()=>setScreen("home")}/>;
+  if(screen==="host-lobby")return <HostLobby rounds={rounds} gameCode={gameCode} players={players} onStart={startGame} onBack={backHomeFromLobby}/>;
   if(screen==="host-game")return <HostPresentation cover={cover} rounds={rounds} gameCode={gameCode} players={players} slideIndex={slideIndex} setSlideIndex={setSlideIndex} onEnd={endGame}/>;
-  if(screen==="player-join")return <PlayerJoin onJoin={handlePlayerJoin} onBack={()=>setScreen("home")}/>;
-  if(screen==="player-game")return <PlayerGame gameCode={playerGameCode} playerName={playerName} playerId={playerId} initialGameData={playerGameData} onLeave={()=>setScreen("home")}/>;
+  if(screen==="player-join")return <PlayerJoin prefillCode={joinPrefillCode} onJoin={handlePlayerJoin} onBack={backHomeFromJoin}/>;
+  if(screen==="player-game")return <PlayerGame gameCode={playerGameCode} playerName={playerName} playerId={playerId} initialGameData={playerGameData} onLeave={handlePlayerLeave}/>;
   return <HomeScreen onNavigate={()=>setScreen("home")}/>;
 }
