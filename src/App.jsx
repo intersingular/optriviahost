@@ -208,16 +208,16 @@ function Confetti({active}){
 }
 
 // ─── YouTube Player ──────────────────────
-// variant "compact" = host question slide (audio only UI); "answer" = answer slide with visible video
-// enforceEnd: when false, the end timestamp is ignored and the clip plays until host stops it
-function YTPlayer({videoId,start,end,variant="compact",enforceEnd=true}){
+// showVideo: toggles video visibility via CSS without recreating the iframe (audio keeps playing)
+// enforceEnd: when false, end timestamp ignored — clip plays until host stops
+// autoStart: when this flips to true and the clip hasn't been played yet, start automatically
+function YTPlayer({videoId,start,end,enforceEnd=true,showVideo=false,autoStart=false}){
   const[status,setStatus]=useState("idle"); // idle | playing | stopped
   const playerRef=useRef(null);
   const containerRef=useRef(null);
   const timerRef=useRef(null);
   const startSec=parseTime(start)||0;
   const endSec=enforceEnd?parseTime(end):null;
-  const showVideo=variant==="answer";
 
   useEffect(()=>{
     if(window.YT) return;
@@ -231,6 +231,14 @@ function YTPlayer({videoId,start,end,variant="compact",enforceEnd=true}){
     if(playerRef.current?.destroy){playerRef.current.destroy();playerRef.current=null;}
   },[]);
 
+  // Auto-start when autoStart flips on, but only if the clip hasn't been played yet
+  useEffect(()=>{
+    if(autoStart&&status==="idle") setStatus("playing");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[autoStart]);
+
+  // Initialize the YT player when status becomes "playing".
+  // showVideo intentionally omitted from deps so toggling it doesn't recreate the iframe.
   useEffect(()=>{
     if(status!=="playing") return;
     const handleEnd=()=>{destroyPlayer();setStatus("stopped");};
@@ -238,8 +246,7 @@ function YTPlayer({videoId,start,end,variant="compact",enforceEnd=true}){
       if(!containerRef.current) return;
       playerRef.current=new window.YT.Player(containerRef.current,{
         videoId,
-        width:showVideo?480:1,
-        height:showVideo?270:1,
+        width:480,height:270,
         playerVars:{
           autoplay:1,
           start:startSec,
@@ -264,7 +271,8 @@ function YTPlayer({videoId,start,end,variant="compact",enforceEnd=true}){
     if(window.YT&&window.YT.Player) initPlayer();
     else window.onYouTubeIframeAPIReady=initPlayer;
     return destroyPlayer;
-  },[status,videoId,startSec,endSec,showVideo,destroyPlayer]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[status,videoId,startSec,endSec,destroyPlayer]);
 
   const playBtn=(
     <button onClick={()=>setStatus("playing")} style={{background:"linear-gradient(135deg,#FF6B9D,#C850C0)",border:"none",borderRadius:20,padding:"16px 36px",color:"#fff",fontFamily:"'Righteous',cursive",fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",gap:12,transition:"all .2s",boxShadow:"0 4px 24px #C850C044"}}
@@ -276,15 +284,20 @@ function YTPlayer({videoId,start,end,variant="compact",enforceEnd=true}){
   if(status==="idle") return playBtn;
 
   const eqActive=status==="playing";
+  // Stable container — visibility is purely CSS-controlled, so the audio
+  // continues seamlessly when the host toggles the video on at reveal time.
+  const wrapperStyle=showVideo?{
+    borderRadius:14,overflow:"hidden",border:"2px solid #C850C044",
+    boxShadow:"0 4px 30px #C850C033",width:480,height:270,background:"#000",
+  }:{
+    width:1,height:1,overflow:"hidden",opacity:0,
+    position:"absolute",left:-9999,top:-9999,pointerEvents:"none",
+  };
   return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
-      {showVideo?(
-        <div style={{borderRadius:14,overflow:"hidden",border:"2px solid #C850C044",boxShadow:"0 4px 30px #C850C033",width:480,height:270,background:"#000"}}>
-          <div ref={containerRef}/>
-        </div>
-      ):(
-        <div ref={containerRef} style={{position:"absolute",width:1,height:1,overflow:"hidden",opacity:0,pointerEvents:"none"}} aria-hidden="true"/>
-      )}
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,position:"relative"}}>
+      <div style={wrapperStyle} aria-hidden={!showVideo}>
+        <div ref={containerRef}/>
+      </div>
 
       <div style={{display:"flex",alignItems:"center",gap:12,justifyContent:"center"}}>
         <style>{`@keyframes eqB{0%,100%{height:6px}50%{height:20px}}`}</style>
@@ -951,7 +964,7 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
             <h2 style={{fontFamily:dFont,fontSize:38,lineHeight:1.3,margin:"0 0 24px",fontWeight:400}}>{slide.question.text}</h2>
             {slide.question.image&&<div style={{display:"flex",justifyContent:"center",marginBottom:16}}><img src={slide.question.image} alt="" style={{maxWidth:"min(560px,90%)",maxHeight:340,objectFit:"contain",borderRadius:16,border:`1px solid ${T.cb}`,boxShadow:"0 4px 30px #00000055"}}/></div>}
             {slide.question.hint&&!hasYTQuestion&&<p style={{color:T.pink,fontSize:16,fontStyle:"italic"}}>💡 {slide.question.hint}</p>}
-            {hasYTQuestion&&<div style={{marginTop:8,marginBottom:16,display:"flex",justifyContent:"center"}}><YTPlayer key={`q-${slide.question.id}`} variant="compact" videoId={musicYtId} start={slide.question.ytStart} end={slide.question.ytEnd}/></div>}
+            {hasYTQuestion&&<div style={{marginTop:8,marginBottom:16,display:"flex",justifyContent:"center"}}><YTPlayer key={`q-${slide.question.id}`} videoId={musicYtId} start={slide.question.ytStart} end={slide.question.ytEnd}/></div>}
             {slide.question.type==="choice"&&slide.question.options&&(
               <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap",marginTop:24}}>
                 {slide.question.options.map((opt,i)=><div key={i} style={{padding:"14px 28px",borderRadius:14,background:T.card,border:`2px solid ${T.cb}`,fontSize:20,fontWeight:600,fontFamily:dFont}}>{String.fromCharCode(65+i)}. {opt}</div>)}
@@ -972,10 +985,20 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
               {slide.question.text}
             </h2>
 
-            {/* Music clip is playable before the answer reveal */}
+            {/* Music clip is playable before reveal as audio-only;
+                video appears (without restarting) once host reveals the answer.
+                If host reveals before ever playing the clip, autoStart kicks in. */}
             {hasYTAnswer&&(
               <div style={{display:"flex",justifyContent:"center",marginBottom:24}}>
-                <YTPlayer key={`a-${slide.question.id}`} variant="answer" enforceEnd={false} videoId={musicYtId} start={slide.question.ytStart} end={slide.question.ytEnd}/>
+                <YTPlayer
+                  key={`a-${slide.question.id}`}
+                  videoId={musicYtId}
+                  start={slide.question.ytStart}
+                  end={slide.question.ytEnd}
+                  enforceEnd={false}
+                  showVideo={answerRevealed}
+                  autoStart={answerRevealed}
+                />
               </div>
             )}
 
@@ -985,12 +1008,12 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
                 {slide.question.answerImage&&<div style={{display:"flex",justifyContent:"center",marginBottom:20}}><img src={slide.question.answerImage} alt="" style={{maxWidth:"min(560px,90%)",maxHeight:300,objectFit:"contain",borderRadius:16,border:`1px solid ${T.cb}`,boxShadow:"0 4px 30px #00000055"}}/></div>}
                 {slide.question.type==="music"?(
                   <div style={{display:"inline-flex",flexDirection:"column",gap:12,alignItems:"center"}}>
-                    <div style={{padding:"20px 40px",borderRadius:16,background:"linear-gradient(135deg,#FF6B9D22,#C850C022)",border:`2px solid ${T.pink}`}}>
-                      <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2,color:T.pink,marginBottom:6}}>Artist (1 pt)</div>
-                      <div style={{fontFamily:dFont,fontSize:36,color:T.pink}}>{slide.question.artist}</div>
+                    <div style={{padding:"20px 40px",borderRadius:16,background:"linear-gradient(135deg,#43E97B22,#38F9D722)",border:`2px solid ${T.grn}`}}>
+                      <div style={{fontSize:12,textTransform:"uppercase",letterSpacing:2.5,color:T.grn,marginBottom:6,fontWeight:800}}>🎤 Artist (1 pt)</div>
+                      <div style={{fontFamily:dFont,fontSize:36,color:T.grn}}>{slide.question.artist}</div>
                     </div>
                     <div style={{padding:"20px 40px",borderRadius:16,background:"linear-gradient(135deg,#43E97B22,#38F9D722)",border:`2px solid ${T.grn}`}}>
-                      <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2,color:T.grn,marginBottom:6}}>Song Title (1 pt)</div>
+                      <div style={{fontSize:12,textTransform:"uppercase",letterSpacing:2.5,color:T.grn,marginBottom:6,fontWeight:800}}>🎵 Song Title (1 pt)</div>
                       <div style={{fontFamily:dFont,fontSize:36,color:T.grn}}>{slide.question.songTitle}</div>
                     </div>
                   </div>
@@ -1246,12 +1269,12 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
                 {currentQ.answerImage&&<div style={{display:"flex",justifyContent:"center",marginBottom:14}}><img src={currentQ.answerImage} alt="" style={{maxWidth:"100%",maxHeight:240,objectFit:"contain",borderRadius:10}}/></div>}
                 {currentQ.type==="music"?(
                   <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center",marginBottom:16}}>
-                    <div style={{padding:"16px 28px",borderRadius:14,background:`${T.pink}15`,border:`2px solid ${T.pink}`,width:"100%"}}>
-                      <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:2,color:T.pink,marginBottom:4}}>Artist</div>
-                      <div style={{fontFamily:dFont,fontSize:22,color:T.pink}}>{currentQ.artist}</div>
+                    <div style={{padding:"16px 28px",borderRadius:14,background:`${T.grn}15`,border:`2px solid ${T.grn}`,width:"100%"}}>
+                      <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2.5,color:T.grn,marginBottom:4,fontWeight:800}}>🎤 Artist</div>
+                      <div style={{fontFamily:dFont,fontSize:22,color:T.grn}}>{currentQ.artist}</div>
                     </div>
                     <div style={{padding:"16px 28px",borderRadius:14,background:`${T.grn}15`,border:`2px solid ${T.grn}`,width:"100%"}}>
-                      <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:2,color:T.grn,marginBottom:4}}>Song</div>
+                      <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2.5,color:T.grn,marginBottom:4,fontWeight:800}}>🎵 Song Title</div>
                       <div style={{fontFamily:dFont,fontSize:22,color:T.grn}}>{currentQ.songTitle}</div>
                     </div>
                   </div>
