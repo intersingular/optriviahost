@@ -963,8 +963,10 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
         </div>
       )}
 
-      {/* Slide */}
-      <div key={`${slideIndex}-${answerRevealed}-${resultsRevealed}`} style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"60px 40px 100px",position:"relative",zIndex:10,animation:"slideIn .5s ease"}}>
+      {/* Slide — key changes only on slide change so reveal toggles don't remount
+          the YTPlayer iframe (which would restart playback). The inner reveal
+          blocks have their own pop animation. */}
+      <div key={slideIndex} style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"60px 40px 100px",position:"relative",zIndex:10,animation:"slideIn .5s ease"}}>
 
         {slide.type==="cover"&&(
           <div style={{textAlign:"center",maxWidth:900}}>
