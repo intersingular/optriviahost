@@ -1197,12 +1197,26 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
       </div>
       <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
 
-        {phase==="waiting"&&(
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:48,marginBottom:16,animation:"pulse 2s infinite"}}>⏳</div>
-            <h3 style={{fontFamily:dFont,fontSize:24}}><GT>{gameState?"Next question coming...":"Waiting for host..."}</GT></h3>
-          </div>
-        )}
+        {phase==="waiting"&&(()=>{
+          let icon="⏳",msg="Waiting for host...";
+          if(gameState){
+            if(gameState.type==="divider"||(gameState.type==="round-title"&&gameState.phase==="answers")){
+              icon="📝";msg="Waiting for the answers...";
+            }else if(gameState.type==="round-title"&&gameState.phase==="questions"){
+              icon="🎯";msg="Next round starting...";
+            }else if(gameState.type==="cover"){
+              icon="🎉";msg="Get ready — game starting!";
+            }else{
+              msg="Next question coming...";
+            }
+          }
+          return (
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:48,marginBottom:16,animation:"pulse 2s infinite"}}>{icon}</div>
+              <h3 style={{fontFamily:dFont,fontSize:24}}><GT>{msg}</GT></h3>
+            </div>
+          );
+        })()}
 
         {phase==="question"&&currentQ&&(
           <div style={{width:"100%",maxWidth:500}}>
