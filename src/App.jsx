@@ -92,36 +92,56 @@ function fuzzyMatch(guess, correct) {
   return false;
 }
 
-// Returns points for a question (1 for normal, up to 2 for music)
-function scoreAnswer(question, playerAnswer) {
+// Per-round base point value (each "correct match" is worth this much).
+// Music questions naturally split into artist + song = 2 matches, so they're worth 2× base.
+function roundPts(round) {
+  const v = round?.pointsPerQuestion;
+  if (v === undefined || v === null || v === "") return 1;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : 1;
+}
+
+// Max possible points for a question given its round
+function maxPoints(q, round) {
+  const base = roundPts(round);
+  return q.type === "music" ? base * 2 : base;
+}
+
+// Returns points the player earned for a question (auto-scored, before host overrides)
+function scoreAnswer(question, playerAnswer, round) {
   if (!playerAnswer) return 0;
+  const base = roundPts(round);
   if (question.type === "music") {
     // Music requires strict normalized equality on artist and song title
     const ans = typeof playerAnswer === "object" ? playerAnswer : {};
     let pts = 0;
     const a = normalize(ans.artist || ""), tA = normalize(question.artist || "");
     const s = normalize(ans.songTitle || ""), tS = normalize(question.songTitle || "");
-    if (a && tA && a === tA) pts++;
-    if (s && tS && s === tS) pts++;
+    if (a && tA && a === tA) pts += base;
+    if (s && tS && s === tS) pts += base;
     return pts;
   }
-  if (question.type === "choice") return normalize(playerAnswer) === normalize(question.answer) ? 1 : 0;
+  if (question.type === "choice") return normalize(playerAnswer) === normalize(question.answer) ? base : 0;
   if (question.type === "range") {
     const num = parseFloat(String(playerAnswer).replace(/[^0-9.\-]/g,""));
     if (isNaN(num)) return 0;
-    return num >= (question.min ?? -Infinity) && num <= (question.max ?? Infinity) ? 1 : 0;
+    return num >= (question.min ?? -Infinity) && num <= (question.max ?? Infinity) ? base : 0;
   }
-  return fuzzyMatch(playerAnswer, question.answer) ? 1 : 0;
+  return fuzzyMatch(playerAnswer, question.answer) ? base : 0;
 }
 
-// Max possible points for a question
-function maxPoints(q) { return q.type === "music" ? 2 : 1; }
-
-// Effective points (host overrides synced via Firebase)
-function getEffectivePoints(q, playerId, playerAnswer, overrides = {}) {
+// Effective points = host override (if set) else the auto-scored value
+function getEffectivePoints(q, playerId, playerAnswer, overrides = {}, round) {
   const key = `${q.id}:${playerId}`;
   if (overrides && key in overrides) return overrides[key];
-  return scoreAnswer(q, playerAnswer);
+  return scoreAnswer(q, playerAnswer, round);
+}
+
+// Helper: build a {questionId -> round} lookup from a rounds array
+function buildRoundIndex(rounds) {
+  const m = {};
+  (rounds || []).forEach(r => (r.questions || []).forEach(q => { m[q.id] = r; }));
+  return m;
 }
 
 function extractYTId(url) {
@@ -545,7 +565,7 @@ function Builder({cover,setCover,rounds,setRounds,onBack,onStartHost}){
   const[showRoundSettings,setShowRoundSettings]=useState(false);
   const round=activeRound>=0?rounds[activeRound]:null;
 
-  function addRound(){if(!newRoundName.trim())return;setRounds(p=>[...p,{id:genId(),name:newRoundName.trim(),emoji:"❓",image:"",questions:[]}]);setNewRoundName("");setShowAddRound(false);setActiveRound(rounds.length)}
+  function addRound(){if(!newRoundName.trim())return;setRounds(p=>[...p,{id:genId(),name:newRoundName.trim(),emoji:"❓",image:"",pointsPerQuestion:1,questions:[]}]);setNewRoundName("");setShowAddRound(false);setActiveRound(rounds.length)}
   function deleteRound(idx){setRounds(p=>p.filter((_,i)=>i!==idx));setActiveRound(Math.max(0,activeRound-1))}
   function addQuestion(){const nq={id:genId(),type:"text",text:"",answer:"",hint:""};setRounds(p=>p.map((r,i)=>i===activeRound?{...r,questions:[...r.questions,nq]}:r));setEditingQ(round.questions.length)}
   function updateQ(qi,u){setRounds(p=>p.map((r,i)=>i===activeRound?{...r,questions:r.questions.map((q,j)=>j===qi?{...q,...u}:q)}:r))}
@@ -582,7 +602,7 @@ function Builder({cover,setCover,rounds,setRounds,onBack,onStartHost}){
                 <span>{r.emoji} {r.name}</span>
                 {rounds.length>1&&<span onClick={e=>{e.stopPropagation();deleteRound(i)}} style={{fontSize:11,color:T.mut,cursor:"pointer"}}>✕</span>}
               </div>
-              <div style={{fontSize:11,color:T.mut,marginTop:2}}>{r.questions.length} questions · {r.questions.reduce((s,q)=>s+maxPoints(q),0)} pts</div>
+              <div style={{fontSize:11,color:T.mut,marginTop:2}}>{r.questions.length} questions · {r.questions.reduce((s,q)=>s+maxPoints(q,r),0)} pts</div>
             </div>
           ))}
           {showAddRound?(<div style={{marginTop:8}}><Inp value={newRoundName} onChange={setNewRoundName} placeholder="Round name..."/><div style={{display:"flex",gap:6,marginTop:6}}><Btn onClick={addRound} style={{fontSize:12,padding:"6px 14px",flex:1}}>Add</Btn><Btn onClick={()=>setShowAddRound(false)} variant="ghost" style={{fontSize:12,padding:"6px 14px"}}>✕</Btn></div></div>):
@@ -617,6 +637,13 @@ function Builder({cover,setCover,rounds,setRounds,onBack,onStartHost}){
                 <div style={{display:"flex",gap:10,marginBottom:10}}>
                   <div style={{flex:1}}><label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Round Name</label><Inp value={round.name||""} onChange={v=>updateRound({name:v})} placeholder="Round name"/></div>
                   <div style={{flex:"0 0 100px"}}><label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Emoji</label><Inp value={round.emoji||""} onChange={v=>updateRound({emoji:v})} placeholder="❓" style={{fontSize:22,textAlign:"center"}}/></div>
+                  <div style={{flex:"0 0 130px"}}>
+                    <label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Points / question</label>
+                    <Inp type="number" value={round.pointsPerQuestion??1} onChange={v=>{const n=parseInt(v,10);updateRound({pointsPerQuestion:Number.isFinite(n)&&n>=0?n:1})}} placeholder="1" style={{textAlign:"center"}}/>
+                  </div>
+                </div>
+                <div style={{fontSize:11,color:T.mut,marginBottom:10,lineHeight:1.5}}>
+                  Each correct text/choice/range answer in this round is worth <b style={{color:T.gold}}>{roundPts(round)}</b> pt{roundPts(round)===1?"":"s"}. Music questions split this across artist + song, so each music question is worth up to <b style={{color:T.gold}}>{roundPts(round)*2}</b> pts.
                 </div>
                 <ImagePicker label="Round title image / GIF (shown on round intro)" value={round.image||""} onChange={v=>updateRound({image:v})}/>
               </div>
@@ -627,7 +654,7 @@ function Builder({cover,setCover,rounds,setRounds,onBack,onStartHost}){
                   <div style={{flex:1}}>
                     <span style={{fontSize:11,color:T.acc,fontWeight:700,marginRight:8}}>Q{qi+1}</span>
                     <span style={{fontSize:10,padding:"2px 8px",borderRadius:6,marginRight:8,background:typeBg(q.type),color:typeColor(q.type)}}>{typeLabel(q.type)}</span>
-                    {q.type==="music"&&<span style={{fontSize:10,color:T.gold}}>({maxPoints(q)} pts)</span>}
+                    <span style={{fontSize:10,color:T.gold}}>({maxPoints(q,round)} pt{maxPoints(q,round)===1?"":"s"})</span>
                     {q.type==="music"&&q.ytUrl&&extractYTId(q.ytUrl)&&<span style={{fontSize:10,padding:"2px 8px",borderRadius:6,background:"#FF6B9D22",color:T.pink,marginLeft:4}}>YT ✓</span>}
                     <div style={{fontSize:14,marginTop:6,lineHeight:1.5}}>{q.text||<span style={{color:T.mut,fontStyle:"italic"}}>No question text</span>}</div>
                     <div style={{fontSize:12,color:T.grn,marginTop:4}}>
@@ -707,7 +734,7 @@ function Builder({cover,setCover,rounds,setRounds,onBack,onStartHost}){
 //  HOST LOBBY
 // ═══════════════════════════════════════════
 function HostLobby({rounds,gameCode,players,onStart,onBack}){
-  const totalPts=rounds.reduce((s,r)=>s+r.questions.reduce((ss,q)=>ss+maxPoints(q),0),0);
+  const totalPts=rounds.reduce((s,r)=>s+r.questions.reduce((ss,q)=>ss+maxPoints(q,r),0),0);
   const totalQ=rounds.reduce((s,r)=>s+r.questions.length,0);
   return(
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:font,color:T.txt,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
@@ -768,23 +795,29 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
     if(gameCode) storageSet(`game:${gameCode}:overrides`,overrides,true);
   },[gameCode,overrides]);
 
-  function getPoints(q, playerId, playerAnswer) {
-    return getEffectivePoints(q, playerId, playerAnswer, overrides);
+  function getPoints(q, playerId, playerAnswer, round) {
+    return getEffectivePoints(q, playerId, playerAnswer, overrides, round);
   }
 
-  function toggleOverride(q, playerId, playerAnswer) {
+  // Override cycles through the natural increments for that question:
+  //   text/choice/range:   0 -> base -> 0
+  //   music:               0 -> base -> 2*base -> 0
+  function toggleOverride(q, playerId, playerAnswer, round) {
     const key = `${q.id}:${playerId}`;
-    const current = key in overrides ? overrides[key] : scoreAnswer(q, playerAnswer);
-    const mp = maxPoints(q);
-    const next = (current + 1) % (mp + 1);
+    const current = key in overrides ? overrides[key] : scoreAnswer(q, playerAnswer, round);
+    const base = roundPts(round);
+    const mp = maxPoints(q, round);
+    const step = base > 0 ? base : 1;
+    let next = current + step;
+    if (next > mp) next = 0;
     setOverrides(prev => ({ ...prev, [key]: next }));
   }
 
-  const totalPts=rounds.reduce((s,r)=>s+r.questions.reduce((ss,q)=>ss+maxPoints(q),0),0);
+  const totalPts=rounds.reduce((s,r)=>s+r.questions.reduce((ss,q)=>ss+maxPoints(q,r),0),0);
   const scores=useMemo(()=>{
     return players.map(p=>{
       let score=0;
-      rounds.forEach(r=>r.questions.forEach(q=>{score+=getEffectivePoints(q,p.id,p.answers?.[q.id],overrides)}));
+      rounds.forEach(r=>r.questions.forEach(q=>{score+=getEffectivePoints(q,p.id,p.answers?.[q.id],overrides,r)}));
       return{...p,score};
     }).sort((a,b)=>b.score-a.score);
   },[players,rounds,overrides]);
@@ -950,7 +983,7 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
               {slide.phase==="questions"?`Round ${slide.roundIdx+1}`:`Round ${slide.roundIdx+1} — Answers`}
             </div>
             <h1 style={{fontFamily:dFont,fontSize:56,margin:0,animation:"glow 3s infinite"}}><GT>{slide.round.name}</GT></h1>
-            <p style={{color:T.mut,marginTop:16,fontSize:18}}>{slide.round.questions.length} question{slide.round.questions.length!==1?"s":""} · {slide.round.questions.reduce((s,q)=>s+maxPoints(q),0)} pts</p>
+            <p style={{color:T.mut,marginTop:16,fontSize:18}}>{slide.round.questions.length} question{slide.round.questions.length!==1?"s":""} · {slide.round.questions.reduce((s,q)=>s+maxPoints(q,slide.round),0)} pts</p>
           </div>
         )}
 
@@ -959,7 +992,7 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
             <div style={{display:"flex",justifyContent:"center",gap:12,marginBottom:24}}>
               <span style={{fontSize:13,padding:"6px 16px",borderRadius:10,background:`${T.acc}22`,border:`1px solid ${T.acc}44`,color:T.acc}}>{slide.round.emoji} {slide.round.name}</span>
               <span style={{fontSize:13,padding:"6px 16px",borderRadius:10,background:`${T.gold}22`,border:`1px solid ${T.gold}44`,color:T.gold}}>Q{slide.questionIdx+1} of {slide.round.questions.length}</span>
-              {slide.question.type==="music"&&<span style={{fontSize:13,padding:"6px 16px",borderRadius:10,background:`${T.pink}22`,border:`1px solid ${T.pink}44`,color:T.pink}}>2 pts (Artist + Song)</span>}
+              <span style={{fontSize:13,padding:"6px 16px",borderRadius:10,background:`${T.pink}22`,border:`1px solid ${T.pink}44`,color:T.pink}}>{slide.question.type==="music"?`${maxPoints(slide.question,slide.round)} pts (Artist + Song)`:`${maxPoints(slide.question,slide.round)} pt${maxPoints(slide.question,slide.round)===1?"":"s"}`}</span>
             </div>
             <h2 style={{fontFamily:dFont,fontSize:38,lineHeight:1.3,margin:"0 0 24px",fontWeight:400}}>{slide.question.text}</h2>
             {slide.question.image&&<div style={{display:"flex",justifyContent:"center",marginBottom:16}}><img src={slide.question.image} alt="" style={{maxWidth:"min(560px,90%)",maxHeight:340,objectFit:"contain",borderRadius:16,border:`1px solid ${T.cb}`,boxShadow:"0 4px 30px #00000055"}}/></div>}
@@ -1006,18 +1039,18 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
             {answerRevealed&&(
               <div style={{animation:"revealPop .6s cubic-bezier(.17,.67,.35,1.3)"}}>
                 {slide.question.answerImage&&<div style={{display:"flex",justifyContent:"center",marginBottom:20}}><img src={slide.question.answerImage} alt="" style={{maxWidth:"min(560px,90%)",maxHeight:300,objectFit:"contain",borderRadius:16,border:`1px solid ${T.cb}`,boxShadow:"0 4px 30px #00000055"}}/></div>}
-                {slide.question.type==="music"?(
+                {slide.question.type==="music"?(()=>{const sub=roundPts(slide.round);return (
                   <div style={{display:"inline-flex",flexDirection:"column",gap:12,alignItems:"center"}}>
                     <div style={{padding:"20px 40px",borderRadius:16,background:"linear-gradient(135deg,#43E97B22,#38F9D722)",border:`2px solid ${T.grn}`}}>
-                      <div style={{fontSize:12,textTransform:"uppercase",letterSpacing:2.5,color:T.grn,marginBottom:6,fontWeight:800}}>🎤 Artist (1 pt)</div>
+                      <div style={{fontSize:12,textTransform:"uppercase",letterSpacing:2.5,color:T.grn,marginBottom:6,fontWeight:800}}>🎤 Artist ({sub} pt{sub===1?"":"s"})</div>
                       <div style={{fontFamily:dFont,fontSize:36,color:T.grn}}>{slide.question.artist}</div>
                     </div>
                     <div style={{padding:"20px 40px",borderRadius:16,background:"linear-gradient(135deg,#43E97B22,#38F9D722)",border:`2px solid ${T.grn}`}}>
-                      <div style={{fontSize:12,textTransform:"uppercase",letterSpacing:2.5,color:T.grn,marginBottom:6,fontWeight:800}}>🎵 Song Title (1 pt)</div>
+                      <div style={{fontSize:12,textTransform:"uppercase",letterSpacing:2.5,color:T.grn,marginBottom:6,fontWeight:800}}>🎵 Song Title ({sub} pt{sub===1?"":"s"})</div>
                       <div style={{fontFamily:dFont,fontSize:36,color:T.grn}}>{slide.question.songTitle}</div>
                     </div>
                   </div>
-                ):(
+                );})():(
                   <div style={{display:"inline-block",padding:"24px 48px",borderRadius:20,background:"linear-gradient(135deg,#43E97B22,#38F9D722)",border:`2px solid ${T.grn}`}}>
                     <div style={{fontSize:12,textTransform:"uppercase",letterSpacing:2,color:T.grn,marginBottom:8}}>Answer</div>
                     <div style={{fontFamily:dFont,fontSize:42,color:T.grn}}>{slide.question.display||slide.question.answer}</div>
@@ -1031,11 +1064,11 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {players.map(p=>{
                         const ans=p.answers?.[slide.question.id];
-                        const pts=getPoints(slide.question,p.id,ans);
-                        const mp=maxPoints(slide.question);
+                        const pts=getPoints(slide.question,p.id,ans,slide.round);
+                        const mp=maxPoints(slide.question,slide.round);
                         const isOverridden=(`${slide.question.id}:${p.id}` in overrides);
-                        const color=pts===mp?T.grn:pts>0?T.gold:T.pink;
-                        const icon=pts===mp?"✓":pts>0?"½":"✗";
+                        const color=pts>=mp&&mp>0?T.grn:pts>0?T.gold:T.pink;
+                        const icon=pts>=mp&&mp>0?"✓":pts>0?"½":"✗";
                         let display="";
                         if(slide.question.type==="music"&&ans&&typeof ans==="object") display=`${ans.artist||"—"} / ${ans.songTitle||"—"}`;
                         else if(ans) display=String(ans);
@@ -1044,7 +1077,7 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
                           <span style={{
                             minWidth:44,height:36,borderRadius:10,border:`2px solid ${color}`,background:`${color}22`,
                             color,fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",
-                            fontFamily:dFont,flexShrink:0,
+                            fontFamily:dFont,flexShrink:0,padding:"0 6px",
                           }}>{pts}/{mp}</span>
                           <div style={{flex:1,textAlign:"left"}}>
                             <div style={{fontSize:14,fontWeight:600,color:T.txt,display:"flex",alignItems:"center",gap:6}}>
@@ -1053,7 +1086,7 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
                             </div>
                             <div style={{fontSize:12,color:T.mut,marginTop:2}}>{display}</div>
                           </div>
-                          <button onClick={()=>toggleOverride(slide.question,p.id,ans)} title="Cycle override: 0 → partial → full" style={{
+                          <button onClick={()=>toggleOverride(slide.question,p.id,ans,slide.round)} title="Cycle override: 0 → partial → full" style={{
                             padding:"8px 14px",borderRadius:10,border:`2px solid ${isOverridden?T.gold:T.cb}`,
                             background:isOverridden?`${T.gold}22`:"transparent",color:isOverridden?T.gold:T.mut,
                             fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:font,flexShrink:0,transition:"all .15s",
@@ -1171,12 +1204,14 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
   useEffect(()=>{storageSet(`game:${gameCode}:player:${playerId}`,{id:playerId,name:playerName,answers},true)},[answers]);
 
   const allQ=(gameData?.rounds||[]).flatMap(r=>r.questions.map(q=>({...q,roundName:r.name,roundEmoji:r.emoji})));
+  const roundIndex=useMemo(()=>buildRoundIndex(gameData?.rounds||[]),[gameData]);
   let currentQ=null,phase="waiting";
   if(gameState){
     if(gameState.type==="question"){currentQ=allQ.find(q=>q.id===gameState.questionId);phase="question"}
     else if(gameState.type==="answer"){currentQ=allQ.find(q=>q.id===gameState.questionId);phase="answer"}
     else if(gameState.type==="results"){phase="results"}
   }
+  const currentRound=currentQ?roundIndex[currentQ.id]:null;
 
   // Reset inputs when question changes
   const prevQRef=useRef(null);
@@ -1222,7 +1257,7 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
           <div style={{width:"100%",maxWidth:500}}>
             <div style={{textAlign:"center",marginBottom:20}}>
               <span style={{fontSize:12,padding:"4px 12px",borderRadius:8,background:`${T.acc}22`,color:T.acc}}>{currentQ.roundEmoji} {currentQ.roundName}</span>
-              {currentQ.type==="music"&&<span style={{fontSize:12,padding:"4px 12px",borderRadius:8,background:`${T.pink}22`,color:T.pink,marginLeft:8}}>2 pts</span>}
+              <span style={{fontSize:12,padding:"4px 12px",borderRadius:8,background:`${T.pink}22`,color:T.pink,marginLeft:8}}>{maxPoints(currentQ,currentRound)} pt{maxPoints(currentQ,currentRound)===1?"":"s"}{currentQ.type==="music"?" (Artist + Song)":""}</span>
             </div>
             <div style={{...cSty,marginBottom:16}}>
               <p style={{fontSize:16,lineHeight:1.6,margin:0,color:T.txt}}>{currentQ.text}</p>
@@ -1299,10 +1334,12 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
                   </div>
                 )}
                 {answers[currentQ.id]&&(()=>{
-                  const pts=getEffectivePoints(currentQ,playerId,answers[currentQ.id],overrides);const mp=maxPoints(currentQ);
-                  const color=pts===mp?T.grn:pts>0?T.gold:T.pink;
+                  const pts=getEffectivePoints(currentQ,playerId,answers[currentQ.id],overrides,currentRound);
+                  const mp=maxPoints(currentQ,currentRound);
+                  const isFull=pts>=mp&&mp>0;
+                  const color=isFull?T.grn:pts>0?T.gold:T.pink;
                   return <div style={{padding:"12px 20px",borderRadius:12,fontSize:14,background:`${color}22`,border:`1px solid ${color}44`,color}}>
-                    {pts===mp?"✓ Full marks!":pts>0?`½ Partial — ${pts}/${mp} pts`:"✗ No points"}{" "}
+                    {isFull?`✓ Full marks! — ${pts}/${mp} pts`:pts>0?`½ Partial — ${pts}/${mp} pts`:`✗ No points — 0/${mp}`}{" "}
                     {currentQ.type==="music"&&typeof answers[currentQ.id]==="object"&&<span style={{opacity:.7}}>({answers[currentQ.id].artist||"—"} / {answers[currentQ.id].songTitle||"—"})</span>}
                   </div>;
                 })()}
@@ -1317,8 +1354,8 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
             <h3 style={{fontFamily:dFont,fontSize:28}}><GT>Game Over!</GT></h3>
             <p style={{color:T.mut,fontSize:14}}>Check the host screen for final scores</p>
             {(()=>{
-              const tp=(gameData?.rounds||[]).reduce((s,r)=>s+r.questions.reduce((ss,q)=>ss+maxPoints(q),0),0);
-              let my=0;(gameData?.rounds||[]).forEach(r=>r.questions.forEach(q=>{my+=getEffectivePoints(q,playerId,answers[q.id],overrides)}));
+              const tp=(gameData?.rounds||[]).reduce((s,r)=>s+r.questions.reduce((ss,q)=>ss+maxPoints(q,r),0),0);
+              let my=0;(gameData?.rounds||[]).forEach(r=>r.questions.forEach(q=>{my+=getEffectivePoints(q,playerId,answers[q.id],overrides,r)}));
               return <div style={{...cSty,marginTop:20}}><div style={{fontFamily:dFont,fontSize:36,color:T.gold}}>{my}<span style={{fontSize:18,color:T.mut}}>/{tp}</span></div><div style={{fontSize:13,color:T.mut,marginTop:4}}>Your Score</div></div>;
             })()}
           </div>
