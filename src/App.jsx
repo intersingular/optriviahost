@@ -761,6 +761,90 @@ function HostLobby({rounds,gameCode,players,onStart,onBack}){
 }
 
 // ═══════════════════════════════════════════
+//  SLIDE NAVIGATOR MODAL
+// ═══════════════════════════════════════════
+function SlideNavModal({slides,slideIndex,onJump,onClose}){
+  const scrollRef=useRef(null);
+  const itemRefs=useRef([]);
+  // Walk backwards from current slide to find the nearest section header (cover/round-title/divider/results).
+  const anchorIdx=(()=>{
+    for(let i=slideIndex;i>=0;i--){
+      const t=slides[i]?.type;
+      if(t==="cover"||t==="round-title"||t==="divider"||t==="results") return i;
+    }
+    return 0;
+  })();
+
+  useEffect(()=>{
+    // Defer until after layout so offsetTop is correct.
+    const id=requestAnimationFrame(()=>{
+      const container=scrollRef.current;
+      const target=itemRefs.current[anchorIdx];
+      if(container&&target){
+        const top=target.offsetTop-container.offsetTop;
+        container.scrollTop=Math.max(0,top-4);
+      }
+    });
+    return ()=>cancelAnimationFrame(id);
+  },[anchorIdx]);
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:24,backdropFilter:"blur(4px)"}} onClick={onClose}>
+      <div ref={scrollRef} style={{...cSty,maxWidth:520,width:"100%",maxHeight:"80vh",overflowY:"auto",border:`1px solid ${T.acc}44`,position:"relative"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,position:"sticky",top:-24,padding:"24px 24px 12px",margin:"-24px -24px 4px",background:T.card,zIndex:2}}>
+          <h3 style={{fontFamily:dFont,fontSize:20,margin:0}}><GT>Jump to Slide</GT></h3>
+          <button onClick={onClose} style={{background:"none",border:"none",color:T.mut,cursor:"pointer",fontSize:18}}>✕</button>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+          {slides.map((s,i)=>{
+            const isCurrent=i===slideIndex;
+            let label="",icon="",section="";
+            if(s.type==="cover"){
+              icon=s.cover?.emoji||"🎉"; label=s.cover?.title||"Cover Slide"; section="cover";
+            }else if(s.type==="round-title"){
+              icon=s.round?.emoji||"📋";
+              label=s.phase==="questions"?`${s.round?.name}`:`${s.round?.name} — Answers`;
+              section=s.phase==="questions"?"question":"answer";
+            }else if(s.type==="question"){
+              icon=""; label=`  Q${s.questionIdx+1}: ${(s.question?.text||"").slice(0,50)}${(s.question?.text||"").length>50?"…":""}`;
+              section="question";
+            }else if(s.type==="answer"){
+              icon=""; label=`  A${s.questionIdx+1}: ${(s.question?.text||"").slice(0,50)}${(s.question?.text||"").length>50?"…":""}`;
+              section="answer";
+            }else if(s.type==="divider"){
+              icon="📝"; label="Answer Time!"; section="divider";
+            }else if(s.type==="results"){
+              icon="🏆"; label="Final Scores"; section="results";
+            }
+            const isHeader=s.type==="cover"||s.type==="round-title"||s.type==="divider"||s.type==="results";
+            const sColor=section==="answer"?T.grn:section==="divider"?T.gold:section==="results"?T.gold:section==="cover"?T.gold:T.txt;
+            return (
+              <button key={i} ref={el=>itemRefs.current[i]=el} onClick={()=>onJump(i)} style={{
+                display:"flex",alignItems:"center",gap:8,padding:isHeader?"10px 12px":"6px 12px",
+                background:isCurrent?`${T.acc}22`:isHeader?"#1a1a3e":"transparent",
+                border:isCurrent?`1px solid ${T.acc}66`:"1px solid transparent",
+                borderRadius:10,cursor:"pointer",textAlign:"left",width:"100%",
+                fontFamily:isHeader?dFont:font,fontSize:isHeader?14:12,
+                color:isCurrent?T.acc:isHeader?sColor:T.mut,
+                fontWeight:isHeader?700:400,transition:"all .1s",
+                marginTop:isHeader&&i>0?8:0,
+              }}
+              onMouseEnter={e=>{if(!isCurrent)e.currentTarget.style.background="#1e1e45"}}
+              onMouseLeave={e=>{if(!isCurrent)e.currentTarget.style.background=isHeader?"#1a1a3e":"transparent"}}>
+                {icon&&<span style={{fontSize:isHeader?16:12,width:22,textAlign:"center",flexShrink:0}}>{icon}</span>}
+                {!icon&&<span style={{width:22,textAlign:"center",flexShrink:0,fontSize:10,color:T.mut}}>{i+1}</span>}
+                <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>
+                {isCurrent&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:`${T.acc}44`,color:T.acc,flexShrink:0}}>HERE</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
 //  HOST PRESENTATION — two-click answer reveal
 // ═══════════════════════════════════════════
 function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideIndex,onEnd}){
@@ -907,60 +991,14 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
         )}
       </div>
 
-      {/* Slide Navigator Modal */}
+      {/* Slide Navigator Modal — scrolls to current section on open */}
       {showNav&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:24,backdropFilter:"blur(4px)"}} onClick={()=>setShowNav(false)}>
-          <div style={{...cSty,maxWidth:520,width:"100%",maxHeight:"80vh",overflowY:"auto",border:`1px solid ${T.acc}44`}} onClick={e=>e.stopPropagation()}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <h3 style={{fontFamily:dFont,fontSize:20,margin:0}}><GT>Jump to Slide</GT></h3>
-              <button onClick={()=>setShowNav(false)} style={{background:"none",border:"none",color:T.mut,cursor:"pointer",fontSize:18}}>✕</button>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}>
-              {slides.map((s,i)=>{
-                const isCurrent=i===slideIndex;
-                let label="",icon="",section="";
-                if(s.type==="cover"){
-                  icon=s.cover?.emoji||"🎉"; label=s.cover?.title||"Cover Slide"; section="cover";
-                }else if(s.type==="round-title"){
-                  icon=s.round?.emoji||"📋";
-                  label=s.phase==="questions"?`${s.round?.name}`:`${s.round?.name} — Answers`;
-                  section=s.phase==="questions"?"question":"answer";
-                }else if(s.type==="question"){
-                  icon=""; label=`  Q${s.questionIdx+1}: ${(s.question?.text||"").slice(0,50)}${(s.question?.text||"").length>50?"…":""}`;
-                  section="question";
-                }else if(s.type==="answer"){
-                  icon=""; label=`  A${s.questionIdx+1}: ${(s.question?.text||"").slice(0,50)}${(s.question?.text||"").length>50?"…":""}`;
-                  section="answer";
-                }else if(s.type==="divider"){
-                  icon="📝"; label="Answer Time!"; section="divider";
-                }else if(s.type==="results"){
-                  icon="🏆"; label="Final Scores"; section="results";
-                }
-                const isHeader=s.type==="cover"||s.type==="round-title"||s.type==="divider"||s.type==="results";
-                const sColor=section==="answer"?T.grn:section==="divider"?T.gold:section==="results"?T.gold:section==="cover"?T.gold:T.txt;
-                return (
-                  <button key={i} onClick={()=>{setSlideIndex(i);setShowNav(false)}} style={{
-                    display:"flex",alignItems:"center",gap:8,padding:isHeader?"10px 12px":"6px 12px",
-                    background:isCurrent?`${T.acc}22`:isHeader?"#1a1a3e":"transparent",
-                    border:isCurrent?`1px solid ${T.acc}66`:"1px solid transparent",
-                    borderRadius:10,cursor:"pointer",textAlign:"left",width:"100%",
-                    fontFamily:isHeader?dFont:font,fontSize:isHeader?14:12,
-                    color:isCurrent?T.acc:isHeader?sColor:T.mut,
-                    fontWeight:isHeader?700:400,transition:"all .1s",
-                    marginTop:isHeader&&i>0?8:0,
-                  }}
-                  onMouseEnter={e=>{if(!isCurrent)e.currentTarget.style.background="#1e1e45"}}
-                  onMouseLeave={e=>{if(!isCurrent)e.currentTarget.style.background=isHeader?"#1a1a3e":"transparent"}}>
-                    {icon&&<span style={{fontSize:isHeader?16:12,width:22,textAlign:"center",flexShrink:0}}>{icon}</span>}
-                    {!icon&&<span style={{width:22,textAlign:"center",flexShrink:0,fontSize:10,color:T.mut}}>{i+1}</span>}
-                    <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</span>
-                    {isCurrent&&<span style={{fontSize:9,padding:"2px 6px",borderRadius:4,background:`${T.acc}44`,color:T.acc,flexShrink:0}}>HERE</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+        <SlideNavModal
+          slides={slides}
+          slideIndex={slideIndex}
+          onJump={i=>{setSlideIndex(i);setShowNav(false)}}
+          onClose={()=>setShowNav(false)}
+        />
       )}
 
       {/* Slide — key changes only on slide change so reveal toggles don't remount
@@ -1020,9 +1058,10 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
               {slide.question.text}
             </h2>
 
-            {/* Music clip is playable before reveal as audio-only;
-                video appears (without restarting) once host reveals the answer.
-                If host reveals before ever playing the clip, autoStart kicks in. */}
+            {/* Music clip auto-plays as audio when the answer slide loads.
+                The video container becomes visible (without restarting playback)
+                once the host clicks reveal. End timestamp is not enforced here —
+                clip keeps playing until host stops or moves on. */}
             {hasYTAnswer&&(
               <div style={{display:"flex",justifyContent:"center",marginBottom:24}}>
                 <YTPlayer
@@ -1032,7 +1071,7 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
                   end={slide.question.ytEnd}
                   enforceEnd={false}
                   showVideo={answerRevealed}
-                  autoStart={answerRevealed}
+                  autoStart={true}
                 />
               </div>
             )}
