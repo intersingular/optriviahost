@@ -154,8 +154,28 @@ function scoreAnswer(question, playerAnswer, round) {
 // Effective points = host override (if set) else the auto-scored value
 function getEffectivePoints(q, playerId, playerAnswer, overrides = {}, round) {
   const key = `${q.id}:${playerId}`;
-  if (overrides && key in overrides) return overrides[key];
+  if (overrides && typeof overrides === "object" && Object.prototype.hasOwnProperty.call(overrides, key)) {
+    const n = Number(overrides[key]);
+    return Number.isFinite(n) ? n : 0;
+  }
   return scoreAnswer(q, playerAnswer, round);
+}
+
+// Rounds completed through a slide pair (pair 0 = rounds 1–2, etc.)
+function roundsThroughPair(pairIdx, rounds) {
+  return (rounds || []).slice(0, (pairIdx + 1) * 2);
+}
+
+function totalMaxPoints(roundsSubset) {
+  return (roundsSubset || []).reduce((s, r) => s + r.questions.reduce((ss, q) => ss + maxPoints(q, r), 0), 0);
+}
+
+function computePlayerScore(playerId, answers, overrides, roundsSubset) {
+  let score = 0;
+  (roundsSubset || []).forEach(r => r.questions.forEach(q => {
+    score += getEffectivePoints(q, playerId, answers?.[q.id], overrides, r);
+  }));
+  return score;
 }
 
 // Helper: build a {questionId -> round} lookup from a rounds array
@@ -1181,6 +1201,18 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
   const[overrides,setOverrides]=useState({}); // { "qId:pId": pointsAwarded }
   const[confirmEnd,setConfirmEnd]=useState(false);
   const[showNav,setShowNav]=useState(false);
+
+  // Load persisted overrides on join/rejoin; merge so a late fetch cannot wipe live toggles.
+  useEffect(()=>{
+    if(!gameCode)return;
+    (async()=>{
+      const ov=await storageGet(`game:${gameCode}:overrides`,true);
+      if(ov&&typeof ov==="object"&&!Array.isArray(ov)){
+        setOverrides(prev=>({...ov,...prev}));
+      }
+    })();
+  },[gameCode]);
+
   const slides=useMemo(()=>buildSlides(rounds,true,cover),[rounds,cover]);
   const slide=slides[slideIndex]||slides[0];
   const progress=((slideIndex+1)/slides.length)*100;
@@ -1249,7 +1281,7 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
   //   music:               0 -> base -> 2*base -> 0
   function toggleOverride(q, playerId, playerAnswer, round) {
     const key = `${q.id}:${playerId}`;
-    const current = key in overrides ? overrides[key] : scoreAnswer(q, playerAnswer, round);
+    const current = getEffectivePoints(q, playerId, playerAnswer, overrides, round);
     const base = roundPts(round);
     const mp = maxPoints(q, round);
     const step = base > 0 ? base : 1;
@@ -1258,13 +1290,10 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
     setOverrides(prev => ({ ...prev, [key]: next }));
   }
 
-  const totalPts=rounds.reduce((s,r)=>s+r.questions.reduce((ss,q)=>ss+maxPoints(q,r),0),0);
+  const totalPts=totalMaxPoints(rounds);
   const scores=useMemo(()=>{
-    return players.map(p=>{
-      let score=0;
-      rounds.forEach(r=>r.questions.forEach(q=>{score+=getEffectivePoints(q,p.id,p.answers?.[q.id],overrides,r)}));
-      return{...p,score};
-    }).sort((a,b)=>b.score-a.score);
+    return players.map(p=>({...p,score:computePlayerScore(p.id,p.answers,overrides,rounds)}))
+      .sort((a,b)=>b.score-a.score);
   },[players,rounds,overrides]);
 
   useEffect(()=>{if(isResults&&resultsRevealed){setShowConfetti(true);const t=setTimeout(()=>setShowConfetti(false),4000);return()=>clearTimeout(t)}},[isResults,resultsRevealed]);
@@ -1464,7 +1493,7 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
               <span style={{fontSize:13,padding:"6px 16px",borderRadius:10,background:`${T.grn}22`,border:`1px solid ${T.grn}44`,color:T.grn}}>Answer {slide.questionIdx+1}</span>
             </div>
             {/* Always show the question */}
-            <h2 style={{fontFamily:dFont,fontSize:"clamp(20px,3vw,32px)",lineHeight:1.4,margin:"0 0 28px",fontWeight:400,color:T.txt,maxWidth:750,marginLeft:"auto",marginRight:"auto"}}>
+            <h2 style={{fontFamily:dFont,fontSize:"clamp(26px,4vw,42px)",lineHeight:1.4,margin:"0 0 28px",fontWeight:400,color:T.txt,maxWidth:900,marginLeft:"auto",marginRight:"auto"}}>
               {slide.question.text}
             </h2>
 
@@ -1489,7 +1518,7 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
             {/* Answer — only shown after reveal click */}
             {answerRevealed&&(
               <div style={{animation:"revealPop .6s cubic-bezier(.17,.67,.35,1.3)"}}>
-                {slide.question.answerImage&&<div style={{display:"flex",justifyContent:"center",marginBottom:20}}><img src={slide.question.answerImage} alt="" style={{maxWidth:"min(560px,90%)",maxHeight:300,objectFit:"contain",borderRadius:16,border:`1px solid ${T.cb}`,boxShadow:"0 4px 30px #00000055"}}/></div>}
+                {slide.question.answerImage&&<div style={{display:"flex",justifyContent:"center",marginBottom:20}}><img src={slide.question.answerImage} alt="" style={{maxWidth:"min(728px,90%)",maxHeight:390,objectFit:"contain",borderRadius:16,border:`1px solid ${T.cb}`,boxShadow:"0 4px 30px #00000055"}}/></div>}
                 {slide.question.type==="music"?(()=>{const sub=roundPts(slide.round);return (
                   <div style={{display:"inline-flex",flexDirection:"column",gap:12,alignItems:"center"}}>
                     <div style={{padding:"20px 40px",borderRadius:16,background:"linear-gradient(135deg,#43E97B22,#38F9D722)",border:`2px solid ${T.grn}`}}>
@@ -1572,15 +1601,20 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
           </div>
         )}
 
-        {slide.type==="leaderboard"&&(
+        {slide.type==="leaderboard"&&(()=>{
+          const roundsSoFar=roundsThroughPair(slide.pairIdx,rounds);
+          const halfwayMax=totalMaxPoints(roundsSoFar);
+          const halfwayScores=players.map(p=>({...p,score:computePlayerScore(p.id,p.answers,overrides,roundsSoFar)}))
+            .sort((a,b)=>b.score-a.score);
+          return (
           <div className="host-slide-content" style={{maxWidth:700,margin:"0 auto"}}>
             <div style={{fontSize:56,marginBottom:8}}>📊</div>
             <h1 style={{fontFamily:dFont,fontSize:40,margin:"0 0 8px"}}><GT>Halfway Standings</GT></h1>
-            <p style={{color:T.mut,fontSize:15,marginBottom:28}}>Rounds 1–{(slide.pairIdx+1)*2} · {totalPts} pts total so far</p>
-            {scores.length===0?<p style={{color:T.mut}}>No players yet</p>:(
+            <p style={{color:T.mut,fontSize:15,marginBottom:28}}>Rounds 1–{(slide.pairIdx+1)*2} · {halfwayMax} pts total so far</p>
+            {halfwayScores.length===0?<p style={{color:T.mut}}>No players yet</p>:(
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                {scores.map((p,i)=>{
-                  const pct=totalPts>0?(p.score/totalPts)*100:0;
+                {halfwayScores.map((p,i)=>{
+                  const pct=halfwayMax>0?(p.score/halfwayMax)*100:0;
                   const medal=i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`;
                   return <div key={p.id} style={{...cSty,display:"flex",alignItems:"center",gap:16,border:i===0?`2px solid ${T.gold}`:`1px solid ${T.cb}`,animation:`slideIn .5s ease ${i*.08}s both`}}>
                     <span style={{fontSize:i<3?28:16,minWidth:38,textAlign:"center",fontFamily:dFont}}>{medal}</span>
@@ -1593,13 +1627,14 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
                         </div>
                       </div>
                     </div>
-                    <div style={{fontFamily:dFont,fontSize:22,color:i===0?T.gold:T.txt}}>{p.score}<span style={{fontSize:13,color:T.mut}}>/{totalPts}</span></div>
+                    <div style={{fontFamily:dFont,fontSize:22,color:i===0?T.gold:T.txt}}>{p.score}<span style={{fontSize:13,color:T.mut}}>/{halfwayMax}</span></div>
                   </div>;
                 })}
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {slide.type==="results"&&(
           <div className="host-slide-content" style={{maxWidth:600,margin:"0 auto"}}>
@@ -1805,8 +1840,9 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
           // Show the player their current score on the leaderboard slide.
           let myScoreBlock=null;
           if(gameState&&gameState.type==="leaderboard"){
-            const tp=(gameData?.rounds||[]).reduce((s,r)=>s+r.questions.reduce((ss,q)=>ss+maxPoints(q,r),0),0);
-            let my=0;(gameData?.rounds||[]).forEach(r=>r.questions.forEach(q=>{my+=getEffectivePoints(q,playerId,answers[q.id],overrides,r)}));
+            const roundsSoFar=roundsThroughPair(gameState.pairIdx??0,gameData?.rounds||[]);
+            const tp=totalMaxPoints(roundsSoFar);
+            const my=computePlayerScore(playerId,answers,overrides,roundsSoFar);
             myScoreBlock=(
               <div style={{...cSty,marginTop:20,display:"inline-block",minWidth:200}}>
                 <div style={{fontFamily:dFont,fontSize:36,color:T.gold}}>{my}<span style={{fontSize:18,color:T.mut}}>/{tp}</span></div>
@@ -1881,9 +1917,22 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
           </div>
         )}
 
-        {phase==="answer"&&currentQ&&(
+        {phase==="answer"&&currentQ&&(()=>{
+          const submitted=answers[currentQ.id];
+          const submittedDisplay=submitted!=null&&submitted!==undefined
+            ?(currentQ.type==="music"&&typeof submitted==="object"
+              ?`${submitted.artist||"—"} / ${submitted.songTitle||"—"}`
+              :String(submitted))
+            :null;
+          return (
           <div style={{textAlign:"center",width:"100%",maxWidth:500}}>
-            <p style={{fontSize:14,color:T.mut,marginBottom:16}}>{currentQ.text}</p>
+            <p style={{fontSize:16,color:T.mut,marginBottom:16,lineHeight:1.5}}>{currentQ.text}</p>
+            {submittedDisplay&&(
+              <div style={{...cSty,marginBottom:16,textAlign:"left"}}>
+                <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2,color:T.acc,marginBottom:6,fontWeight:700}}>Your answer</div>
+                <div style={{fontSize:16,color:T.txt,wordBreak:"break-word"}}>{submittedDisplay}</div>
+              </div>
+            )}
             {gameState.answerRevealed!==true?(
               <div style={{padding:32,textAlign:"center"}}>
                 <div style={{fontSize:40,marginBottom:12,animation:"pulse 2s infinite"}}>🔒</div>
@@ -1891,7 +1940,7 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
               </div>
             ):(
               <>
-                {currentQ.answerImage&&<div style={{display:"flex",justifyContent:"center",marginBottom:14}}><img src={currentQ.answerImage} alt="" style={{maxWidth:"100%",maxHeight:240,objectFit:"contain",borderRadius:10}}/></div>}
+                {currentQ.answerImage&&<div style={{display:"flex",justifyContent:"center",marginBottom:14}}><img src={currentQ.answerImage} alt="" style={{maxWidth:"100%",maxHeight:312,objectFit:"contain",borderRadius:10}}/></div>}
                 {currentQ.type==="music"?(
                   <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center",marginBottom:16}}>
                     <div style={{padding:"16px 28px",borderRadius:14,background:`${T.grn}15`,border:`2px solid ${T.grn}`,width:"100%"}}>
@@ -1909,20 +1958,20 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
                     <div style={{fontFamily:dFont,fontSize:28,color:T.grn}}>{currentQ.display||currentQ.answer}</div>
                   </div>
                 )}
-                {answers[currentQ.id]&&(()=>{
+                {submittedDisplay&&(()=>{
                   const pts=getEffectivePoints(currentQ,playerId,answers[currentQ.id],overrides,currentRound);
                   const mp=maxPoints(currentQ,currentRound);
                   const isFull=pts>=mp&&mp>0;
                   const color=isFull?T.grn:pts>0?T.gold:T.pink;
                   return <div style={{padding:"12px 20px",borderRadius:12,fontSize:14,background:`${color}22`,border:`1px solid ${color}44`,color}}>
-                    {isFull?`✓ Full marks! — ${pts}/${mp} pts`:pts>0?`½ Partial — ${pts}/${mp} pts`:`✗ No points — 0/${mp}`}{" "}
-                    {currentQ.type==="music"&&typeof answers[currentQ.id]==="object"&&<span style={{opacity:.7}}>({answers[currentQ.id].artist||"—"} / {answers[currentQ.id].songTitle||"—"})</span>}
+                    {isFull?`✓ Full marks! — ${pts}/${mp} pts`:pts>0?`½ Partial — ${pts}/${mp} pts`:`✗ No points — 0/${mp}`}
                   </div>;
                 })()}
               </>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {phase==="results"&&(
           <div style={{textAlign:"center"}}>
@@ -1930,8 +1979,8 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
             <h3 style={{fontFamily:dFont,fontSize:28}}><GT>Game Over!</GT></h3>
             <p style={{color:T.mut,fontSize:14}}>Check the host screen for final scores</p>
             {(()=>{
-              const tp=(gameData?.rounds||[]).reduce((s,r)=>s+r.questions.reduce((ss,q)=>ss+maxPoints(q,r),0),0);
-              let my=0;(gameData?.rounds||[]).forEach(r=>r.questions.forEach(q=>{my+=getEffectivePoints(q,playerId,answers[q.id],overrides,r)}));
+              const tp=totalMaxPoints(gameData?.rounds||[]);
+              const my=computePlayerScore(playerId,answers,overrides,gameData?.rounds||[]);
               return <div style={{...cSty,marginTop:20}}><div style={{fontFamily:dFont,fontSize:36,color:T.gold}}>{my}<span style={{fontSize:18,color:T.mut}}>/{tp}</span></div><div style={{fontSize:13,color:T.mut,marginTop:4}}>Your Score</div></div>;
             })()}
           </div>
