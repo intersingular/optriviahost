@@ -860,6 +860,7 @@ function HostLobby({rounds,gameCode,players,onStart,onBack}){
 // ═══════════════════════════════════════════
 //  ALBIE — three side-profile poses (reference style, facing right)
 // ═══════════════════════════════════════════
+const ALBIE_ENABLED=false;
 // Chars: d=outline  s=back shadow  m=brown coat  e=floppy ear  w=cream lower snout  B=eye/nose
 const ALBIE_PALETTE={d:"#3d2814",s:"#8b5528",m:"#b87840",e:"#7a4a20",w:"#e8dcc8",B:"#181008"};
 
@@ -963,7 +964,7 @@ function AlbieDog({gameCode}){
   const[actionState,setActionState]=useState(null);
 
   useEffect(()=>{
-    if(!gameCode)return;
+    if(!ALBIE_ENABLED||!gameCode)return;
     let lastAt=0,firstFetch=true,cancelled=false;
     const poll=async()=>{
       if(cancelled)return;
@@ -982,10 +983,12 @@ function AlbieDog({gameCode}){
   },[gameCode]);
 
   useEffect(()=>{
-    if(!actionState)return;
+    if(!ALBIE_ENABLED||!actionState)return;
     const t=setTimeout(()=>setActionState(null),2400);
     return()=>clearTimeout(t);
   },[actionState]);
+
+  if(!ALBIE_ENABLED)return null;
 
   const action=actionState?.type||null;
   const actionKey=actionState?`${actionState.type}-${actionState.at}`:"idle";
@@ -1075,8 +1078,9 @@ function AlbieDog({gameCode}){
 }
 
 function AlbieActions({gameCode,playerName,avatar}){
-  // Rate-limit clicks so a player can't spam-lock Albie's animation.
   const cooldownRef=useRef(0);
+  if(!ALBIE_ENABLED)return null;
+  // Rate-limit clicks so a player can't spam-lock Albie's animation.
   function trigger(action){
     const now=Date.now();
     if(now<cooldownRef.current)return;
@@ -1354,8 +1358,7 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
       <Confetti active={showConfetti}/>
       <div style={{position:"absolute",inset:0,background:bgs[slideIndex%3],transition:"background 1s"}}/>
 
-      {/* Albie — idle pixel pet in the bottom right; players can trigger reactions */}
-      <AlbieDog gameCode={gameCode}/>
+      {ALBIE_ENABLED&&<AlbieDog gameCode={gameCode}/>}
 
       {/* Progress */}
       <div style={{position:"fixed",top:0,left:0,right:0,height:4,background:"#151530",zIndex:100}}>
@@ -1800,7 +1803,7 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
   const already=currentQ&&answers[currentQ.id];
   // Show the Albie minigame whenever the player isn't actively being prompted
   // to answer — i.e. they're between questions or have already submitted.
-  const showAlbie=!(phase==="question"&&!already);
+  const showAlbie=ALBIE_ENABLED&&!(phase==="question"&&!already);
 
   return(
     <div className="player-game-shell" style={{
