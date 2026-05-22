@@ -44,21 +44,21 @@ const PRELOADED_ROUNDS = [
   {
     id:"r3", name:"Music Round", emoji:"🎵",
     questions:[
-      {id:"r3q1",type:"music",text:"🎵 Song #1",artist:"Bruno Mars",songTitle:"Marry You",ytUrl:"",ytStart:"",ytEnd:""},
-      {id:"r3q2",type:"music",text:"🎵 Song #2",artist:"Ed Sheeran",songTitle:"Perfect",ytUrl:"",ytStart:"",ytEnd:""},
-      {id:"r3q3",type:"music",text:"🎵 Song #3",artist:"Taylor Swift",songTitle:"Love Story",ytUrl:"",ytStart:"",ytEnd:""},
-      {id:"r3q4",type:"music",text:"🎵 Song #4",artist:"Taeyang",songTitle:"Wedding Dress",ytUrl:"",ytStart:"",ytEnd:""},
-      {id:"r3q5",type:"music",text:"🎵 Song #5",artist:"The Dixie Cups",songTitle:"Chapel of Love",ytUrl:"",ytStart:"",ytEnd:""},
-      {id:"r3q6",type:"music",text:"🎵 Song #6",artist:"J.R.A.",songTitle:"By Chance (You & I)",ytUrl:"",ytStart:"",ytEnd:""},
-      {id:"r3q7",type:"music",text:"🎵 Song #7",artist:"Calum Scott & Leona Lewis",songTitle:"You Are the Reason",ytUrl:"",ytStart:"",ytEnd:""},
-      {id:"r3q8",type:"music",text:"🎵 Song #8",artist:"Phillipa Soo (Hamilton)",songTitle:"Helpless",ytUrl:"",ytStart:"",ytEnd:""},
-      {id:"r3q9",type:"music",text:"🎵 Song #9",artist:"Auburn",songTitle:"Perfect Two",ytUrl:"",ytStart:"",ytEnd:""},
-      {id:"r3q10",type:"music",text:"🎵 Song #10",artist:"Katherine Ho",songTitle:"Yellow",ytUrl:"",ytStart:"",ytEnd:""},
-      {id:"r3q11",type:"music",text:"🎵 Song #11",artist:"Snow Patrol",songTitle:"Chasing Cars",ytUrl:"",ytStart:"",ytEnd:""},
-      {id:"r3q12",type:"music",text:"🎵 Song #12",artist:"Hannah Montana",songTitle:"He Could Be The One",ytUrl:"",ytStart:"",ytEnd:""},
-      {id:"r3q13",type:"music",text:"🎵 Song #13",artist:"Train",songTitle:"Marry Me",ytUrl:"",ytStart:"",ytEnd:""},
-      {id:"r3q14",type:"music",text:"🎵 Song #14",artist:"Vanessa Hudgens & Zac Efron",songTitle:"Can I Have This Dance",ytUrl:"",ytStart:"",ytEnd:""},
-      {id:"r3q15",type:"music",text:"🎵 Song #15",artist:"Mendelssohn",songTitle:"Wedding March",ytUrl:"",ytStart:"",ytEnd:""},
+      {id:"r3q1",type:"music",text:"🎵 Song #1",artist:"Bruno Mars",songTitle:"Marry You",ytUrl:"",ytStart:"",ytEnd:"",ytAnswerStart:""},
+      {id:"r3q2",type:"music",text:"🎵 Song #2",artist:"Ed Sheeran",songTitle:"Perfect",ytUrl:"",ytStart:"",ytEnd:"",ytAnswerStart:""},
+      {id:"r3q3",type:"music",text:"🎵 Song #3",artist:"Taylor Swift",songTitle:"Love Story",ytUrl:"",ytStart:"",ytEnd:"",ytAnswerStart:""},
+      {id:"r3q4",type:"music",text:"🎵 Song #4",artist:"Taeyang",songTitle:"Wedding Dress",ytUrl:"",ytStart:"",ytEnd:"",ytAnswerStart:""},
+      {id:"r3q5",type:"music",text:"🎵 Song #5",artist:"The Dixie Cups",songTitle:"Chapel of Love",ytUrl:"",ytStart:"",ytEnd:"",ytAnswerStart:""},
+      {id:"r3q6",type:"music",text:"🎵 Song #6",artist:"J.R.A.",songTitle:"By Chance (You & I)",ytUrl:"",ytStart:"",ytEnd:"",ytAnswerStart:""},
+      {id:"r3q7",type:"music",text:"🎵 Song #7",artist:"Calum Scott & Leona Lewis",songTitle:"You Are the Reason",ytUrl:"",ytStart:"",ytEnd:"",ytAnswerStart:""},
+      {id:"r3q8",type:"music",text:"🎵 Song #8",artist:"Phillipa Soo (Hamilton)",songTitle:"Helpless",ytUrl:"",ytStart:"",ytEnd:"",ytAnswerStart:""},
+      {id:"r3q9",type:"music",text:"🎵 Song #9",artist:"Auburn",songTitle:"Perfect Two",ytUrl:"",ytStart:"",ytEnd:"",ytAnswerStart:""},
+      {id:"r3q10",type:"music",text:"🎵 Song #10",artist:"Katherine Ho",songTitle:"Yellow",ytUrl:"",ytStart:"",ytEnd:"",ytAnswerStart:""},
+      {id:"r3q11",type:"music",text:"🎵 Song #11",artist:"Snow Patrol",songTitle:"Chasing Cars",ytUrl:"",ytStart:"",ytEnd:"",ytAnswerStart:""},
+      {id:"r3q12",type:"music",text:"🎵 Song #12",artist:"Hannah Montana",songTitle:"He Could Be The One",ytUrl:"",ytStart:"",ytEnd:"",ytAnswerStart:""},
+      {id:"r3q13",type:"music",text:"🎵 Song #13",artist:"Train",songTitle:"Marry Me",ytUrl:"",ytStart:"",ytEnd:"",ytAnswerStart:""},
+      {id:"r3q14",type:"music",text:"🎵 Song #14",artist:"Vanessa Hudgens & Zac Efron",songTitle:"Can I Have This Dance",ytUrl:"",ytStart:"",ytEnd:"",ytAnswerStart:""},
+      {id:"r3q15",type:"music",text:"🎵 Song #15",artist:"Mendelssohn",songTitle:"Wedding March",ytUrl:"",ytStart:"",ytEnd:"",ytAnswerStart:""},
     ]
   },
   {
@@ -387,19 +387,37 @@ function YTPlayer({videoId,start,end,enforceEnd=true,showVideo=false,autoStart=f
   if(status==="idle") return playBtn;
 
   const eqActive=status==="playing";
-  // Stable container — visibility is purely CSS-controlled, so the audio
-  // continues seamlessly when the host toggles the video on at reveal time.
-  const wrapperStyle=showVideo?{
-    borderRadius:14,overflow:"hidden",border:"2px solid #C850C044",
-    boxShadow:"0 4px 30px #C850C033",width:480,height:270,background:"#000",
-  }:{
-    width:1,height:1,overflow:"hidden",opacity:0,
-    position:"absolute",left:-9999,top:-9999,pointerEvents:"none",
-  };
+  // Iframe parent stays 480×270 at all times; reveal only expands the clip shell
+  // and fades opacity — never moves or resizes the iframe node (avoids restart).
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,position:"relative"}}>
-      <div style={wrapperStyle} aria-hidden={!showVideo}>
-        <div ref={containerRef}/>
+      <div
+        style={{
+          width:480,
+          height:showVideo?270:0,
+          overflow:"hidden",
+          position:"relative",
+          transition:"height .25s ease",
+        }}
+        aria-hidden={!showVideo}
+      >
+        <div style={{
+          width:480,
+          height:270,
+          position:"absolute",
+          top:0,
+          left:0,
+          borderRadius:14,
+          overflow:"hidden",
+          background:"#000",
+          border:showVideo?`2px solid #C850C044`:"2px solid transparent",
+          boxShadow:showVideo?"0 4px 30px #C850C033":"none",
+          opacity:showVideo?1:0,
+          pointerEvents:showVideo?"auto":"none",
+          transition:"opacity .25s ease",
+        }}>
+          <div ref={containerRef}/>
+        </div>
       </div>
 
       <div style={{display:"flex",alignItems:"center",gap:12,justifyContent:"center"}}>
@@ -803,11 +821,17 @@ function Builder({cover,setCover,rounds,setRounds,onBack,onStartHost}){
                       <div style={{marginTop:8,paddingTop:12,borderTop:`1px solid ${T.cb}`}}>
                         <div style={{fontSize:12,fontWeight:700,color:T.pink,marginBottom:8}}>🎵 Audio Clip (YouTube)</div>
                         <div style={{marginBottom:8}}><label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>YouTube URL or Video ID</label><Inp value={q.ytUrl||""} onChange={v=>updateQ(qi,{ytUrl:v})} placeholder="https://youtube.com/watch?v=..."/></div>
-                        <div style={{display:"flex",gap:10}}>
+                        <div style={{fontSize:11,color:T.mut,marginBottom:6,fontWeight:600}}>Question slide</div>
+                        <div style={{display:"flex",gap:10,marginBottom:10}}>
                           <div style={{flex:1}}><label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Start (e.g. 1:23)</label><Inp value={q.ytStart||""} onChange={v=>updateQ(qi,{ytStart:v})} placeholder="0:00"/></div>
                           <div style={{flex:1}}><label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>End (e.g. 1:45)</label><Inp value={q.ytEnd||""} onChange={v=>updateQ(qi,{ytEnd:v})} placeholder="0:30"/></div>
                         </div>
-                        {q.ytUrl&&extractYTId(q.ytUrl)&&<div style={{marginTop:8,fontSize:12,color:T.grn}}>✓ ID: {extractYTId(q.ytUrl)}{q.ytStart&&` · ${q.ytStart}`}{q.ytEnd&&` → ${q.ytEnd}`}</div>}
+                        <div style={{fontSize:11,color:T.mut,marginBottom:6,fontWeight:600}}>Answer slide</div>
+                        <div style={{marginBottom:8}}>
+                          <label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Start (e.g. 0:45)</label>
+                          <Inp value={q.ytAnswerStart||""} onChange={v=>updateQ(qi,{ytAnswerStart:v})} placeholder="Leave blank to use question start"/>
+                        </div>
+                        {q.ytUrl&&extractYTId(q.ytUrl)&&<div style={{marginTop:8,fontSize:12,color:T.grn}}>✓ ID: {extractYTId(q.ytUrl)}{q.ytStart&&` · Q ${q.ytStart}`}{q.ytEnd&&`–${q.ytEnd}`}{(q.ytAnswerStart||q.ytStart)&&` · A ${q.ytAnswerStart||q.ytStart}`}</div>}
                         {q.ytUrl&&!extractYTId(q.ytUrl)&&<div style={{marginTop:8,fontSize:12,color:T.pink}}>✗ Could not parse URL</div>}
                       </div>
                     </>)}
@@ -1506,7 +1530,7 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
                 <YTPlayer
                   key={`a-${slide.question.id}`}
                   videoId={musicYtId}
-                  start={slide.question.ytStart}
+                  start={slide.question.ytAnswerStart||slide.question.ytStart}
                   end={slide.question.ytEnd}
                   enforceEnd={false}
                   showVideo={answerRevealed}
@@ -1765,7 +1789,9 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
     const poll=async()=>{
       const st=await storageGet(`game:${gameCode}:state`,true);if(st)setGameState(st);
       const d=await storageGet(`game:${gameCode}:host`,true);if(d)setGameData(d);
-      const ov=await storageGet(`game:${gameCode}:overrides`,true);if(ov)setOverrides(ov);
+      const ov=await storageGet(`game:${gameCode}:overrides`,true);
+      if(ov&&typeof ov==="object"&&!Array.isArray(ov))setOverrides(ov);
+      else if(ov===null)setOverrides({});
     };
     poll();const iv=setInterval(poll,1500);return()=>clearInterval(iv);
   },[gameCode]);
@@ -1837,19 +1863,6 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
               msg="Next question coming...";
             }
           }
-          // Show the player their current score on the leaderboard slide.
-          let myScoreBlock=null;
-          if(gameState&&gameState.type==="leaderboard"){
-            const roundsSoFar=roundsThroughPair(gameState.pairIdx??0,gameData?.rounds||[]);
-            const tp=totalMaxPoints(roundsSoFar);
-            const my=computePlayerScore(playerId,answers,overrides,roundsSoFar);
-            myScoreBlock=(
-              <div style={{...cSty,marginTop:20,display:"inline-block",minWidth:200}}>
-                <div style={{fontFamily:dFont,fontSize:36,color:T.gold}}>{my}<span style={{fontSize:18,color:T.mut}}>/{tp}</span></div>
-                <div style={{fontSize:13,color:T.mut,marginTop:4}}>Your score so far</div>
-              </div>
-            );
-          }
           // Allow players to pick an avatar before the game starts (lobby or cover slide).
           const preGame=!gameState||gameState.type==="cover";
           return (
@@ -1857,7 +1870,6 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
               <div style={{fontSize:48,marginBottom:16,animation:"pulse 2s infinite"}}>{avatar||icon}</div>
               <h3 style={{fontFamily:dFont,fontSize:24,margin:0}}><GT>{msg}</GT></h3>
               {sub&&<p style={{color:T.mut,fontSize:14,marginTop:8}}>{sub}</p>}
-              {myScoreBlock}
               {preGame&&<AvatarPicker value={avatar} onChange={setAvatar}/>}
             </div>
           );
@@ -1978,11 +1990,6 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
             <div style={{fontSize:48,marginBottom:8}}>🏆</div>
             <h3 style={{fontFamily:dFont,fontSize:28}}><GT>Game Over!</GT></h3>
             <p style={{color:T.mut,fontSize:14}}>Check the host screen for final scores</p>
-            {(()=>{
-              const tp=totalMaxPoints(gameData?.rounds||[]);
-              const my=computePlayerScore(playerId,answers,overrides,gameData?.rounds||[]);
-              return <div style={{...cSty,marginTop:20}}><div style={{fontFamily:dFont,fontSize:36,color:T.gold}}>{my}<span style={{fontSize:18,color:T.mut}}>/{tp}</span></div><div style={{fontSize:13,color:T.mut,marginTop:4}}>Your Score</div></div>;
-            })()}
           </div>
         )}
       </div>
