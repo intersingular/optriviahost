@@ -933,12 +933,11 @@ function AlbieDog({gameCode}){
           75%{transform:translateY(2px)}
         }
         @keyframes albie-play-bounce{
-          0%,100%{transform:translate(calc(-50% - 58px),0)}
-          12%{transform:translate(calc(-50% - 58px),-22px)}
-          25%{transform:translate(calc(-50% - 30px),-10px)}
-          50%{transform:translate(calc(-50% + 58px),0)}
-          62%{transform:translate(calc(-50% + 58px),-22px)}
-          75%{transform:translate(calc(-50% + 30px),-10px)}
+          0%,100%{transform:translate(calc(-50% - 52px),4px)}
+          20%{transform:translate(calc(-50% - 26px),-10px)}
+          40%{transform:translate(calc(-50% + 0px),-14px)}
+          60%{transform:translate(calc(-50% + 26px),-10px)}
+          80%{transform:translate(calc(-50% + 52px),4px)}
         }
         .albie-head-img.albie-idle{animation:albie-breathe 2.8s ease-in-out infinite}
         .albie-head-img.albie-chomp{animation:albie-chomp .35s ease-in-out infinite}
@@ -989,7 +988,7 @@ function AlbieDog({gameCode}){
 
             {action==="feed"&&propEmoji&&(
               <span key={`food-${actionKey}`} style={{
-                position:"absolute",bottom:"calc(18% - 20px)",left:"calc(50% + 10px)",
+                position:"absolute",bottom:"calc(18% - 40px)",left:"calc(50% + 20px)",
                 fontSize:34,lineHeight:1,pointerEvents:"none",
                 animation:"albie-nom .5s ease-in-out infinite",
               }}>{propEmoji}</span>
@@ -997,9 +996,9 @@ function AlbieDog({gameCode}){
 
             {action==="play"&&propEmoji&&(
               <span key={`toy-${actionKey}`} style={{
-                position:"absolute",top:"22%",left:"50%",
+                position:"absolute",top:"calc(22% + 80px)",left:"50%",
                 fontSize:32,lineHeight:1,pointerEvents:"none",
-                animation:"albie-play-bounce 1.1s ease-in-out infinite",
+                animation:"albie-play-bounce 1.65s cubic-bezier(0.42,0,0.58,1) infinite",
               }}>{propEmoji}</span>
             )}
           </div>
