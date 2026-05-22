@@ -932,15 +932,13 @@ function AlbieDog({gameCode}){
           50%{transform:translateY(0)}
           75%{transform:translateY(2px)}
         }
-        @keyframes albie-chase{
-          0%{transform:translate(95%,35%) scale(.7);opacity:0}
-          12%{opacity:1}
-          28%{transform:translate(-15%,-55%) scale(1)}
-          45%{transform:translate(70%,-15%) scale(.95)}
-          62%{transform:translate(-25%,-40%) scale(1.05)}
-          78%{transform:translate(55%,5%) scale(.9)}
-          92%{opacity:1}
-          100%{transform:translate(95%,35%) scale(.7);opacity:0}
+        @keyframes albie-play-bounce{
+          0%,100%{transform:translate(calc(-50% - 58px),0)}
+          12%{transform:translate(calc(-50% - 58px),-22px)}
+          25%{transform:translate(calc(-50% - 30px),-10px)}
+          50%{transform:translate(calc(-50% + 58px),0)}
+          62%{transform:translate(calc(-50% + 58px),-22px)}
+          75%{transform:translate(calc(-50% + 30px),-10px)}
         }
         .albie-head-img.albie-idle{animation:albie-breathe 2.8s ease-in-out infinite}
         .albie-head-img.albie-chomp{animation:albie-chomp .35s ease-in-out infinite}
@@ -959,12 +957,17 @@ function AlbieDog({gameCode}){
         </div>
       )}
 
-      <div style={{position:"relative",padding:"4px 8px"}}>
+      <div style={{position:"relative",padding:"10px 14px 8px"}}>
+        <div aria-hidden style={{
+          position:"absolute",inset:0,borderRadius:16,zIndex:0,
+          background:"linear-gradient(180deg,#151530f5,#0d0d25f5)",
+          border:`1px solid ${T.cb}`,boxShadow:"0 8px 32px #000000aa",
+        }}/>
         <div key={actionKey} style={{
-          position:"relative",width:168,minHeight:168,
+          position:"relative",zIndex:1,width:168,minHeight:168,
           display:"flex",alignItems:"center",justifyContent:"center",
         }}>
-          <div style={{position:"relative",width:148,background:"transparent"}}>
+          <div style={{position:"relative",width:148}}>
             <img
               src={ALBIE_IMG}
               alt="Albie"
@@ -986,7 +989,7 @@ function AlbieDog({gameCode}){
 
             {action==="feed"&&propEmoji&&(
               <span key={`food-${actionKey}`} style={{
-                position:"absolute",bottom:"18%",left:"50%",
+                position:"absolute",bottom:"calc(18% - 20px)",left:"calc(50% + 10px)",
                 fontSize:34,lineHeight:1,pointerEvents:"none",
                 animation:"albie-nom .5s ease-in-out infinite",
               }}>{propEmoji}</span>
@@ -994,9 +997,9 @@ function AlbieDog({gameCode}){
 
             {action==="play"&&propEmoji&&(
               <span key={`toy-${actionKey}`} style={{
-                position:"absolute",top:"50%",left:"50%",
+                position:"absolute",top:"22%",left:"50%",
                 fontSize:32,lineHeight:1,pointerEvents:"none",
-                animation:"albie-chase 2s ease-in-out infinite",
+                animation:"albie-play-bounce 1.1s ease-in-out infinite",
               }}>{propEmoji}</span>
             )}
           </div>
