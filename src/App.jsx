@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { ref, set, get } from "firebase/database";
 import { ref as sref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import QRCode from "qrcode";
@@ -956,8 +957,13 @@ function AlbieDog({gameCode}){
   const action=actionState?.type||null;
   const actionKey=actionState?`${actionState.type}-${actionState.at}`:"idle";
 
-  return (
-    <div style={{position:"fixed",bottom:18,right:18,zIndex:50,pointerEvents:"none",display:"flex",flexDirection:"column",alignItems:"center"}}>
+  // Portal to document.body so host overflow:hidden and stacking contexts
+  // can't clip or bury the dog behind slide chrome.
+  const albieUI=(
+    <div className="albie-host-anchor" style={{
+      position:"fixed",bottom:88,right:20,zIndex:150,pointerEvents:"none",
+      display:"flex",flexDirection:"column",alignItems:"flex-end",
+    }}>
       <style>{`
         @keyframes albie-breathe{0%,100%{transform:scaleY(1)}50%{transform:scaleY(1.035) translateY(-1px)}}
         @keyframes albie-eat{0%,100%{transform:translateY(0) rotate(0)}15%{transform:translateY(8px) rotate(-3deg)}30%{transform:translateY(0)}45%{transform:translateY(8px) rotate(3deg)}60%{transform:translateY(0)}75%{transform:translateY(8px) rotate(-2deg)}}
@@ -987,38 +993,48 @@ function AlbieDog({gameCode}){
         </div>
       )}
 
-      {/* Dog + action overlays */}
-      <div style={{position:"relative",display:"flex",alignItems:"flex-end",justifyContent:"center",width:140,height:140}}>
-        {action==="pet"&&(
-          <div key={`heart-${actionKey}`} style={{
-            position:"absolute",top:-4,left:"50%",fontSize:38,lineHeight:1,
-            animation:"albie-heart 2s ease-out forwards",pointerEvents:"none",
-          }}>❤️</div>
-        )}
+      {/* Dog + mat — mat sits behind sprite for contrast on dark slides */}
+      <div style={{position:"relative",padding:"10px 14px 8px"}}>
+        <div aria-hidden style={{
+          position:"absolute",inset:0,borderRadius:16,zIndex:0,
+          background:"linear-gradient(180deg,#151530f5,#0d0d25f5)",
+          border:`1px solid ${T.cb}`,boxShadow:"0 8px 32px #000000aa",
+        }}/>
+        <div style={{position:"relative",zIndex:1,display:"flex",alignItems:"flex-end",justifyContent:"center",width:140,height:140}}>
+          {action==="pet"&&(
+            <div key={`heart-${actionKey}`} style={{
+              position:"absolute",top:-4,left:"50%",transform:"translateX(-50%)",fontSize:38,lineHeight:1,
+              animation:"albie-heart 2s ease-out forwards",pointerEvents:"none",
+            }}>❤️</div>
+          )}
 
-        <div key={`dog-${actionKey}`} style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)"}}>
-          <AlbieSprite size={132} action={action}/>
-        </div>
-
-        {action==="feed"&&(
-          <div key={`bowl-${actionKey}`} style={{
-            position:"absolute",bottom:-12,left:"50%",
-            animation:"albie-bowl 2.4s ease-in-out forwards",
-            pointerEvents:"none",
-          }}>
-            <AlbieBowl/>
+          <div key={`dog-${actionKey}`} style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)"}}>
+            <AlbieSprite size={132} action={action}/>
           </div>
-        )}
 
-        {action==="play"&&(
-          <div key={`ball-${actionKey}`} style={{
-            position:"absolute",bottom:6,left:"50%",fontSize:30,lineHeight:1,
-            animation:"albie-ball 2s ease-out forwards",pointerEvents:"none",
-          }}>🎾</div>
-        )}
+          {action==="feed"&&(
+            <div key={`bowl-${actionKey}`} style={{
+              position:"absolute",bottom:-12,left:"50%",
+              animation:"albie-bowl 2.4s ease-in-out forwards",
+              pointerEvents:"none",
+            }}>
+              <AlbieBowl/>
+            </div>
+          )}
+
+          {action==="play"&&(
+            <div key={`ball-${actionKey}`} style={{
+              position:"absolute",bottom:6,left:"50%",fontSize:30,lineHeight:1,
+              animation:"albie-ball 2s ease-out forwards",pointerEvents:"none",
+            }}>🎾</div>
+          )}
+        </div>
       </div>
     </div>
   );
+
+  if(typeof document==="undefined") return null;
+  return createPortal(albieUI,document.body);
 }
 
 function AlbieActions({gameCode,playerName,avatar}){
@@ -1043,19 +1059,30 @@ function AlbieActions({gameCode,playerName,avatar}){
     onMouseDown={e=>{e.currentTarget.style.transform="scale(.96)"}}
     onMouseUp={e=>{e.currentTarget.style.transform="scale(1)"}}
     >
-      <span style={{fontSize:22,lineHeight:1}}>{emoji}</span>
-      <span>{label}</span>
+      <span className="albie-action-emoji" style={{fontSize:22,lineHeight:1}}>{emoji}</span>
+      <span className="albie-action-label">{label}</span>
     </button>
   );
   return (
-    <div style={{padding:"10px 14px 14px",borderTop:`1px solid ${T.cb}`,background:"#0d0d25"}}>
-      <div style={{fontSize:10,color:T.mut,textAlign:"center",marginBottom:8,letterSpacing:1.5,textTransform:"uppercase",fontWeight:600}}>
+    <div className="player-albie-bar" style={{
+      flexShrink:0,padding:"8px 12px",
+      paddingBottom:"max(10px, env(safe-area-inset-bottom))",
+      borderTop:`1px solid ${T.cb}`,background:"#0d0d25",
+    }}>
+      <style>{`
+        .player-albie-bar .albie-action-label{display:block}
+        @media (max-width:380px){
+          .player-albie-bar .albie-action-label{font-size:10px}
+          .player-albie-bar .albie-action-emoji{font-size:18px!important}
+        }
+      `}</style>
+      <div style={{fontSize:10,color:T.mut,textAlign:"center",marginBottom:6,letterSpacing:1.5,textTransform:"uppercase",fontWeight:600}}>
         🐶 Say hi to Albie
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
-        {btn("🍖","Feed Albie","feed",T.gold)}
-        {btn("💕","Pet Albie","pet",T.pink)}
-        {btn("🎾","Play with Albie","play",T.grn)}
+        {btn("🍖","Feed","feed",T.gold)}
+        {btn("💕","Pet","pet",T.pink)}
+        {btn("🎾","Play","play",T.grn)}
       </div>
     </div>
   );
@@ -1739,9 +1766,17 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
   const showAlbie=!(phase==="question"&&!already);
 
   return(
-    <div style={{minHeight:"100vh",background:T.bg,fontFamily:font,color:T.txt,display:"flex",flexDirection:"column"}}>
-      <style>{globalCSS}{`@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}`}</style>
-      <div style={{padding:"12px 20px",borderBottom:`1px solid ${T.cb}`,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+    <div className="player-game-shell" style={{
+      height:"100dvh",maxHeight:"100dvh",background:T.bg,fontFamily:font,color:T.txt,
+      display:"flex",flexDirection:"column",overflow:"hidden",boxSizing:"border-box",
+    }}>
+      <style>{globalCSS}{`
+        @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+        @supports not (height:100dvh){
+          .player-game-shell{height:100vh!important;max-height:100vh!important}
+        }
+      `}</style>
+      <div style={{flexShrink:0,padding:"12px 16px",borderBottom:`1px solid ${T.cb}`,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
         <div style={{fontSize:13,color:T.mut,display:"flex",alignItems:"center",gap:6,minWidth:0}}>
           {avatar&&<span style={{fontSize:16,lineHeight:1,flexShrink:0}}>{avatar}</span>}
           <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{playerName}</span>
@@ -1749,7 +1784,11 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
         <div style={{fontFamily:dFont,fontSize:14,flexShrink:0}}><GT>GAME {gameCode}</GT></div>
         <button onClick={onLeave} style={{background:"none",border:"none",color:T.mut,cursor:"pointer",fontSize:12,fontFamily:font,flexShrink:0}}>Leave</button>
       </div>
-      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div style={{
+        flex:1,minHeight:0,overflowY:"auto",WebkitOverflowScrolling:"touch",
+        display:"flex",flexDirection:"column",alignItems:"center",justifyContent:showAlbie?"flex-start":"center",
+        padding:showAlbie?"16px 16px 12px":"24px 16px",
+      }}>
 
         {phase==="waiting"&&(()=>{
           let icon="⏳",msg="Waiting for host...",sub="";
