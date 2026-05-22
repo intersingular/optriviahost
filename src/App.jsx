@@ -858,109 +858,18 @@ function HostLobby({rounds,gameCode,players,onStart,onBack}){
 }
 
 // ═══════════════════════════════════════════
-//  ALBIE — three side-profile poses (reference style, facing right)
+//  ALBIE — headshot + emoji reactions (host display)
 // ═══════════════════════════════════════════
-const ALBIE_ENABLED=false;
-// Chars: d=outline  s=back shadow  m=brown coat  e=floppy ear  w=cream lower snout  B=eye/nose
-const ALBIE_PALETTE={d:"#3d2814",s:"#8b5528",m:"#b87840",e:"#7a4a20",w:"#e8dcc8",B:"#181008"};
+const ALBIE_ENABLED=true;
+const ALBIE_IMG="/albie.png";
+const ALBIE_FOODS=["🍖","🥩","🍗","🦴","🥓","🍕","🌭","🍔","🥪","🧀","🍪","🍩","🥞","🍎","🍌","🥕"];
+const ALBIE_TOYS=["🎾","⚽","🏀","🏈","⚾","🥎","🪀","🧸","🎯","🏓","🏸","🥏","🪁","🛼","🏐","🎱"];
 
-// Standing — four legs, tail curled up (play)
-const ALBIE_STAND=[
-  "........................",
-  ".....ddmmmmdd...........",
-  "....dmmmmmmmmmd.........",
-  "...dmmmmmmmmmmmd........",
-  "...dmmmmmmdddmd.........",
-  "..dmmmmmmmmmmmmmd.......",
-  "..dmmmmmemmmmmd.........",
-  "..dmmmmmmmBmmmmd........",
-  "..dmmmmmmmwwBmd.........",
-  "..dmmmmmmmmmmmd.........",
-  ".dmmmmssssmmmmmd........",
-  ".dmmmd......dmmmmd......",
-  "dmmd.......dmmmmd.......",
-  "dmd........dmmmmd.......",
-  "dd..........ddmmdd......",
-];
-
-// Sitting — default idle (breathe / pet)
-const ALBIE_SIT=[
-  "........................",
-  ".....ddmmmmdd...........",
-  "....dmmmmmmmmmd.........",
-  "...dmmmmmmmmmmmd........",
-  "...dmmmmmmdddmd.........",
-  "..dmmmmmmmmmmmmmd.......",
-  "..dmmmmmemmmmmd.........",
-  "..dmmmmmmmBmmmmd........",
-  "..dmmmmmmmwwBmd.........",
-  "..dmmmmmmmmmmmd.........",
-  ".dmmmmmmmmmmmmd.........",
-  ".dmmmmmmmmmd............",
-  "..dmmmmmmddd............",
-  "...dddddd...............",
-];
-
-// Lying — belly down, head low (feed)
-const ALBIE_LIE=[
-  "........................",
-  "..dmmmmmmmmmmmd.........",
-  ".dmmmmmmmmmmmmmd........",
-  ".dmmmmmmmdddmmmmmd......",
-  "dmmmmmmmmmmmmmmmmmd.....",
-  "dmmmmmmmemmmmmmmmmd.....",
-  "dmmmmmmmmwwBmmmmmmmd....",
-  "dmmmmmmmmmmmmmmmd.......",
-  "dmmmmmmmmmmmmmd.........",
-  "ddmmmmmmddd.............",
-];
-
-const ALBIE_POSES={sit:ALBIE_SIT,stand:ALBIE_STAND,lie:ALBIE_LIE};
-
-function AlbieSprite({size=168,pose="sit",animClass=""}){
-  const rows=ALBIE_POSES[pose]||ALBIE_SIT;
-  const w=rows[0].length,h=rows.length;
-  return (
-    <svg
-      viewBox={`0 0 ${w} ${h}`}
-      width={size}
-      height={Math.round(size*h/w)}
-      shapeRendering="crispEdges"
-      style={{display:"block",imageRendering:"pixelated",transformOrigin:"18% 92%"}}
-      className={animClass||undefined}
-    >
-      {rows.flatMap((row,y)=>row.split("").map((ch,x)=>{
-        const color=ALBIE_PALETTE[ch];
-        if(!color) return null;
-        return <rect key={`${pose}-${x}-${y}`} x={x} y={y} width="1.04" height="1.04" fill={color}/>;
-      }))}
-    </svg>
-  );
-}
-
-function AlbieBowl(){
-  // Tiny pixel food bowl with kibble. ViewBox is the actual pixel grid.
-  return (
-    <svg width={88} height={32} viewBox="0 0 22 8" shapeRendering="crispEdges" style={{display:"block",imageRendering:"pixelated"}}>
-      {/* kibble pieces */}
-      <rect x="4" y="0" width="2" height="2" fill="#a8702e"/>
-      <rect x="7" y="0" width="2" height="2" fill="#d49a4a"/>
-      <rect x="10" y="0" width="2" height="2" fill="#a8702e"/>
-      <rect x="13" y="0" width="2" height="2" fill="#d49a4a"/>
-      <rect x="16" y="0" width="2" height="2" fill="#a8702e"/>
-      {/* bowl rim */}
-      <rect x="1" y="2" width="20" height="1" fill="#5a360e"/>
-      <rect x="1" y="3" width="20" height="1" fill="#8b5524"/>
-      {/* bowl body */}
-      <rect x="2" y="4" width="18" height="2" fill="#a86b35"/>
-      <rect x="3" y="6" width="16" height="1" fill="#7a4a1a"/>
-      <rect x="5" y="7" width="12" height="1" fill="#5a360e"/>
-    </svg>
-  );
+function albiePick(list,seed){
+  return list[Math.abs(Math.floor(seed))%list.length];
 }
 
 function AlbieDog({gameCode}){
-  // actionState: null | {type, by, at}  — `at` makes the key unique per trigger.
   const[actionState,setActionState]=useState(null);
 
   useEffect(()=>{
@@ -984,7 +893,7 @@ function AlbieDog({gameCode}){
 
   useEffect(()=>{
     if(!ALBIE_ENABLED||!actionState)return;
-    const t=setTimeout(()=>setActionState(null),2400);
+    const t=setTimeout(()=>setActionState(null),2600);
     return()=>clearTimeout(t);
   },[actionState]);
 
@@ -992,82 +901,110 @@ function AlbieDog({gameCode}){
 
   const action=actionState?.type||null;
   const actionKey=actionState?`${actionState.type}-${actionState.at}`:"idle";
-  // Map player actions to reference poses: sit=idle/pet, stand=play, lie=feed
-  const pose=action==="play"?"stand":action==="feed"?"lie":"sit";
-  const animClass=action==="pet"?"albie-wag":action==="play"?"albie-bounce":action==="feed"?"albie-nuzzle":"albie-breathe";
-  const poseH={sit:108,stand:118,lie:76}[pose];
+  const propEmoji=actionState
+    ?action==="feed"?albiePick(ALBIE_FOODS,actionState.at)
+    :action==="play"?albiePick(ALBIE_TOYS,actionState.at)
+    :null
+    :null;
 
-  // Portal to document.body so host overflow:hidden and stacking contexts
-  // can't clip or bury the dog behind slide chrome.
   const albieUI=(
     <div className="albie-host-anchor" style={{
       position:"fixed",bottom:88,right:20,zIndex:150,pointerEvents:"none",
       display:"flex",flexDirection:"column",alignItems:"flex-end",
     }}>
       <style>{`
-        @keyframes albie-breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
-        @keyframes albie-wag{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg)}}
-        @keyframes albie-bounce{0%,100%{transform:translateY(0)}35%{transform:translateY(-10px)}55%{transform:translateY(0)}}
-        @keyframes albie-nuzzle{0%,100%{transform:translateY(0)}40%{transform:translateY(3px)}60%{transform:translateY(0)}}
-        .albie-breathe{animation:albie-breathe 2.8s ease-in-out infinite;transform-origin:18% 92%}
-        .albie-wag{animation:albie-wag .35s ease-in-out infinite;transform-origin:18% 92%}
-        .albie-bounce{animation:albie-bounce .55s ease-out infinite;transform-origin:18% 92%}
-        .albie-nuzzle{animation:albie-nuzzle 1.2s ease-in-out infinite;transform-origin:18% 92%}
-        @keyframes albie-bowl{0%{transform:translate(-50%,40px);opacity:0}15%{transform:translate(-50%,0);opacity:1}85%{transform:translate(-50%,0);opacity:1}100%{transform:translate(-50%,40px);opacity:0}}
-        @keyframes albie-heart{0%{transform:translate(-50%,30px) scale(.4);opacity:0}20%{transform:translate(-50%,0) scale(1.15);opacity:1}100%{transform:translate(-50%,-90px) scale(1.4);opacity:0}}
-        @keyframes albie-ball{0%{transform:translate(calc(-50% - 80px),0);opacity:0}15%{transform:translate(calc(-50% - 50px),-30px);opacity:1}35%{transform:translate(calc(-50% - 25px),0)}50%{transform:translate(-50%,-25px)}65%{transform:translate(calc(-50% + 25px),0)}85%{transform:translate(calc(-50% + 50px),-18px);opacity:1}100%{transform:translate(calc(-50% + 80px),0);opacity:0}}
+        @keyframes albie-breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
         @keyframes albie-caption{0%{opacity:0;transform:translateY(8px)}15%{opacity:1;transform:translateY(0)}85%{opacity:1}100%{opacity:0;transform:translateY(-4px)}}
+        @keyframes albie-pat{
+          0%,100%{transform:translate(-50%,0) rotate(-18deg) scaleX(-1)}
+          50%{transform:translate(-50%,10px) rotate(8deg) scaleX(-1)}
+        }
+        @keyframes albie-nom{
+          0%,100%{transform:translate(-50%,0) scale(1)}
+          20%{transform:translate(-50%,4px) scale(.88)}
+          40%{transform:translate(-50%,0) scale(1.12)}
+          60%{transform:translate(-50%,3px) scale(.9)}
+          80%{transform:translate(-50%,0) scale(1.08)}
+        }
+        @keyframes albie-chomp{
+          0%,100%{transform:translateY(0)}
+          25%{transform:translateY(2px)}
+          50%{transform:translateY(0)}
+          75%{transform:translateY(2px)}
+        }
+        @keyframes albie-chase{
+          0%{transform:translate(95%,35%) scale(.7);opacity:0}
+          12%{opacity:1}
+          28%{transform:translate(-15%,-55%) scale(1)}
+          45%{transform:translate(70%,-15%) scale(.95)}
+          62%{transform:translate(-25%,-40%) scale(1.05)}
+          78%{transform:translate(55%,5%) scale(.9)}
+          92%{opacity:1}
+          100%{transform:translate(95%,35%) scale(.7);opacity:0}
+        }
+        .albie-head-img.albie-idle{animation:albie-breathe 2.8s ease-in-out infinite}
+        .albie-head-img.albie-chomp{animation:albie-chomp .35s ease-in-out infinite}
       `}</style>
 
-      {/* Caption above the dog */}
       {actionState&&(actionState.by||actionState.avatar)&&(
         <div key={`cap-${actionKey}`} style={{
           fontFamily:dFont,fontSize:11,color:T.gold,
           background:"#0d0d25cc",border:`1px solid ${T.gold}55`,
           borderRadius:10,padding:"4px 10px",marginBottom:6,
           whiteSpace:"nowrap",letterSpacing:.5,
-          animation:"albie-caption 2.4s ease-in-out forwards",
+          animation:"albie-caption 2.6s ease-in-out forwards",
         }}>
           {actionState.avatar&&<span style={{marginRight:6}}>{actionState.avatar}</span>}
-          {actionState.by||"Someone"} {action==="feed"?"fed":action==="pet"?"pet":"played with"} Albie!
+          {actionState.by||"Someone"} {action==="feed"?"fed":action==="pet"?"petted":"played with"} Albie!
         </div>
       )}
 
-      {/* Dog + mat — mat sits behind sprite for contrast on dark slides */}
       <div style={{position:"relative",padding:"10px 14px 8px"}}>
         <div aria-hidden style={{
           position:"absolute",inset:0,borderRadius:16,zIndex:0,
           background:"linear-gradient(180deg,#151530f5,#0d0d25f5)",
           border:`1px solid ${T.cb}`,boxShadow:"0 8px 32px #000000aa",
         }}/>
-        <div style={{position:"relative",zIndex:1,display:"flex",alignItems:"flex-end",justifyContent:"flex-start",width:180,height:poseH+16}}>
-          {action==="pet"&&(
-            <div key={`heart-${actionKey}`} style={{
-              position:"absolute",top:-4,left:"55%",transform:"translateX(-50%)",fontSize:38,lineHeight:1,
-              animation:"albie-heart 2s ease-out forwards",pointerEvents:"none",
-            }}>❤️</div>
-          )}
+        <div key={actionKey} style={{
+          position:"relative",zIndex:1,width:168,minHeight:168,
+          display:"flex",alignItems:"center",justifyContent:"center",
+        }}>
+          <div style={{position:"relative",width:148}}>
+            <img
+              src={ALBIE_IMG}
+              alt="Albie"
+              className={`albie-head-img ${action==="feed"?"albie-chomp":"albie-idle"}`}
+              style={{
+                width:"100%",height:"auto",display:"block",
+                filter:"drop-shadow(0 6px 16px #00000088)",
+              }}
+            />
 
-          <div key={`dog-${actionKey}-${pose}`} style={{position:"absolute",bottom:0,left:0}}>
-            <AlbieSprite size={168} pose={pose} animClass={animClass}/>
+            {action==="pet"&&(
+              <span key={`pat-${actionKey}`} style={{
+                position:"absolute",top:"2%",left:"52%",
+                fontSize:36,lineHeight:1,pointerEvents:"none",
+                animation:"albie-pat .45s ease-in-out infinite",
+                filter:"drop-shadow(0 2px 4px #00000066)",
+              }}>👋</span>
+            )}
+
+            {action==="feed"&&propEmoji&&(
+              <span key={`food-${actionKey}`} style={{
+                position:"absolute",bottom:"18%",left:"50%",
+                fontSize:34,lineHeight:1,pointerEvents:"none",
+                animation:"albie-nom .5s ease-in-out infinite",
+              }}>{propEmoji}</span>
+            )}
+
+            {action==="play"&&propEmoji&&(
+              <span key={`toy-${actionKey}`} style={{
+                position:"absolute",top:"50%",left:"50%",
+                fontSize:32,lineHeight:1,pointerEvents:"none",
+                animation:"albie-chase 2s ease-in-out infinite",
+              }}>{propEmoji}</span>
+            )}
           </div>
-
-          {action==="feed"&&(
-            <div key={`bowl-${actionKey}`} style={{
-              position:"absolute",bottom:-12,left:"50%",
-              animation:"albie-bowl 2.4s ease-in-out forwards",
-              pointerEvents:"none",
-            }}>
-              <AlbieBowl/>
-            </div>
-          )}
-
-          {action==="play"&&(
-            <div key={`ball-${actionKey}`} style={{
-              position:"absolute",bottom:6,left:"50%",fontSize:30,lineHeight:1,
-              animation:"albie-ball 2s ease-out forwards",pointerEvents:"none",
-            }}>🎾</div>
-          )}
         </div>
       </div>
     </div>
@@ -1121,9 +1058,9 @@ function AlbieActions({gameCode,playerName,avatar}){
         🐶 Say hi to Albie
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
-        {btn("🍖","Feed","feed",T.gold)}
-        {btn("💕","Pet","pet",T.pink)}
-        {btn("🎾","Play","play",T.grn)}
+        {btn("🍖","Feed Albie","feed",T.gold)}
+        {btn("👋","Pet Albie","pet",T.pink)}
+        {btn("🎾","Play with Albie","play",T.grn)}
       </div>
     </div>
   );
