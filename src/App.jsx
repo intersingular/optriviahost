@@ -858,29 +858,34 @@ function HostLobby({rounds,gameCode,players,onStart,onBack}){
 }
 
 // ═══════════════════════════════════════════
-//  ALBIE — pixel-art idle pet
+//  ALBIE — pixel-art idle pet (golden doodle-ish, floppy ears)
 // ═══════════════════════════════════════════
-// 18-wide x 17-tall sprite. Characters map to ALBIE_PALETTE.
+// 22-wide × 21-tall. Brown face; cream snout only; ears hang at sides.
+// Chars: d=outline  m=golden-brown coat  w=cream muzzle  B=eyes/nose
 const ALBIE_SPRITE=[
-  "..................",
-  "..dd..........dd..",
-  ".dmmd........dmmd.",
-  ".dmmd........dmmd.",
-  ".dmmdmmmmmmmmdmmd.",
-  "dmmmmmmmmmmmmmmmmd",
-  "dmmwwwwwwwwwwwwmmd",
-  "dmwwwwwwwwwwwwwwmd",
-  "dmwwwwBBwwwwBBwwmd",
-  "dmwwwwBBwwwwBBwwmd",
-  "dmwwwwwwwwwwwwwwmd",
-  "dmwwwwwwBBBBwwwwmd",
-  "dmmwwwBBBBBBwwwmmd",
-  ".dmmwwwBBBBwwwmmd.",
-  ".dmmmwwwwwwwwmmmd.",
-  "..dmmmmmmmmmmmmd..",
-  "...ddmmmmmmmmdd...",
+  "......................",
+  ".....mmmmmmmmmm.......",
+  "...mmmmmmmmmmmmmmmm...",
+  "..mmmmmmmmmmmmmmmmmm..",
+  "mdmmmmmmmmmmmmmmmmmmmd",
+  "mdmmmmmmmmmmmmmmmmmmmd",
+  "mdmmmmmmmmmmmmmmmmmmmd",
+  "mdmmmmmmmBBmmmmBBmmmmd",
+  "mdmmmmmmwwwwwwwwmmmmmd",
+  "mdmmmmmmwwwwBwwwwmmmmd",
+  "mdmmmmmmwwwwwwwwmmmmmd",
+  "mdmmmmmmmmmmmmmmmmmmmd",
+  "mdmmmmmmmmmmmmmmmmmmmd",
+  "mm....................mm",
+  "mm....................mm",
+  "mm....................mm",
+  "mm....................mm",
+  "mm....................mm",
+  "md....................dm",
+  ".d......................d.",
+  "..ddmmmmmmmmmmmmmmmmdd..",
 ];
-const ALBIE_PALETTE={d:"#6e3618",m:"#c87a3e",w:"#f8e9c6",B:"#1a0e08"};
+const ALBIE_PALETTE={d:"#5c3414",m:"#c88642",w:"#f5edd4",B:"#1a1008"};
 
 function AlbieSprite({size=140,action=null}){
   const w=ALBIE_SPRITE[0].length,h=ALBIE_SPRITE.length;
@@ -1000,7 +1005,7 @@ function AlbieDog({gameCode}){
           background:"linear-gradient(180deg,#151530f5,#0d0d25f5)",
           border:`1px solid ${T.cb}`,boxShadow:"0 8px 32px #000000aa",
         }}/>
-        <div style={{position:"relative",zIndex:1,display:"flex",alignItems:"flex-end",justifyContent:"center",width:140,height:140}}>
+        <div style={{position:"relative",zIndex:1,display:"flex",alignItems:"flex-end",justifyContent:"center",width:148,height:152}}>
           {action==="pet"&&(
             <div key={`heart-${actionKey}`} style={{
               position:"absolute",top:-4,left:"50%",transform:"translateX(-50%)",fontSize:38,lineHeight:1,
@@ -1009,7 +1014,7 @@ function AlbieDog({gameCode}){
           )}
 
           <div key={`dog-${actionKey}`} style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)"}}>
-            <AlbieSprite size={132} action={action}/>
+            <AlbieSprite size={140} action={action}/>
           </div>
 
           {action==="feed"&&(
