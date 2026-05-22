@@ -857,6 +857,211 @@ function HostLobby({rounds,gameCode,players,onStart,onBack}){
 }
 
 // ═══════════════════════════════════════════
+//  ALBIE — pixel-art idle pet
+// ═══════════════════════════════════════════
+// 18-wide x 17-tall sprite. Characters map to ALBIE_PALETTE.
+const ALBIE_SPRITE=[
+  "..................",
+  "..dd..........dd..",
+  ".dmmd........dmmd.",
+  ".dmmd........dmmd.",
+  ".dmmdmmmmmmmmdmmd.",
+  "dmmmmmmmmmmmmmmmmd",
+  "dmmwwwwwwwwwwwwmmd",
+  "dmwwwwwwwwwwwwwwmd",
+  "dmwwwwBBwwwwBBwwmd",
+  "dmwwwwBBwwwwBBwwmd",
+  "dmwwwwwwwwwwwwwwmd",
+  "dmwwwwwwBBBBwwwwmd",
+  "dmmwwwBBBBBBwwwmmd",
+  ".dmmwwwBBBBwwwmmd.",
+  ".dmmmwwwwwwwwmmmd.",
+  "..dmmmmmmmmmmmmd..",
+  "...ddmmmmmmmmdd...",
+];
+const ALBIE_PALETTE={d:"#6e3618",m:"#c87a3e",w:"#f8e9c6",B:"#1a0e08"};
+
+function AlbieSprite({size=140,action=null}){
+  const w=ALBIE_SPRITE[0].length,h=ALBIE_SPRITE.length;
+  const animClass=action==="feed"?"albie-eat":action==="pet"?"albie-wag":action==="play"?"albie-jump":"albie-breathe";
+  return (
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      width={size}
+      height={Math.round(size*h/w)}
+      shapeRendering="crispEdges"
+      style={{display:"block",imageRendering:"pixelated",transformOrigin:"50% 95%"}}
+      className={animClass}
+    >
+      {ALBIE_SPRITE.flatMap((row,y)=>row.split("").map((ch,x)=>{
+        const color=ALBIE_PALETTE[ch];
+        if(!color) return null;
+        // 0.04 oversize hides hairline gaps from subpixel rendering when scaled.
+        return <rect key={`${x}-${y}`} x={x} y={y} width="1.04" height="1.04" fill={color}/>;
+      }))}
+    </svg>
+  );
+}
+
+function AlbieBowl(){
+  // Tiny pixel food bowl with kibble. ViewBox is the actual pixel grid.
+  return (
+    <svg width={88} height={32} viewBox="0 0 22 8" shapeRendering="crispEdges" style={{display:"block",imageRendering:"pixelated"}}>
+      {/* kibble pieces */}
+      <rect x="4" y="0" width="2" height="2" fill="#a8702e"/>
+      <rect x="7" y="0" width="2" height="2" fill="#d49a4a"/>
+      <rect x="10" y="0" width="2" height="2" fill="#a8702e"/>
+      <rect x="13" y="0" width="2" height="2" fill="#d49a4a"/>
+      <rect x="16" y="0" width="2" height="2" fill="#a8702e"/>
+      {/* bowl rim */}
+      <rect x="1" y="2" width="20" height="1" fill="#5a360e"/>
+      <rect x="1" y="3" width="20" height="1" fill="#8b5524"/>
+      {/* bowl body */}
+      <rect x="2" y="4" width="18" height="2" fill="#a86b35"/>
+      <rect x="3" y="6" width="16" height="1" fill="#7a4a1a"/>
+      <rect x="5" y="7" width="12" height="1" fill="#5a360e"/>
+    </svg>
+  );
+}
+
+function AlbieDog({gameCode}){
+  // actionState: null | {type, by, at}  — `at` makes the key unique per trigger.
+  const[actionState,setActionState]=useState(null);
+
+  useEffect(()=>{
+    if(!gameCode)return;
+    let lastAt=0,firstFetch=true,cancelled=false;
+    const poll=async()=>{
+      if(cancelled)return;
+      const a=await storageGet(`game:${gameCode}:albie`,true);
+      if(a&&typeof a.at==="number"){
+        if(firstFetch){lastAt=a.at;firstFetch=false;return;}
+        if(a.at>lastAt){
+          lastAt=a.at;
+          setActionState({type:a.action,by:a.by||"",avatar:a.avatar||"",at:a.at});
+        }
+      }else if(firstFetch){firstFetch=false}
+    };
+    poll();
+    const iv=setInterval(poll,700);
+    return()=>{cancelled=true;clearInterval(iv)};
+  },[gameCode]);
+
+  useEffect(()=>{
+    if(!actionState)return;
+    const t=setTimeout(()=>setActionState(null),2400);
+    return()=>clearTimeout(t);
+  },[actionState]);
+
+  const action=actionState?.type||null;
+  const actionKey=actionState?`${actionState.type}-${actionState.at}`:"idle";
+
+  return (
+    <div style={{position:"fixed",bottom:18,right:18,zIndex:50,pointerEvents:"none",display:"flex",flexDirection:"column",alignItems:"center"}}>
+      <style>{`
+        @keyframes albie-breathe{0%,100%{transform:scaleY(1)}50%{transform:scaleY(1.035) translateY(-1px)}}
+        @keyframes albie-eat{0%,100%{transform:translateY(0) rotate(0)}15%{transform:translateY(8px) rotate(-3deg)}30%{transform:translateY(0)}45%{transform:translateY(8px) rotate(3deg)}60%{transform:translateY(0)}75%{transform:translateY(8px) rotate(-2deg)}}
+        @keyframes albie-wag{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
+        @keyframes albie-jump{0%,100%{transform:translateY(0)}25%{transform:translateY(-16px)}50%{transform:translateY(0)}75%{transform:translateY(-10px)}}
+        .albie-breathe{animation:albie-breathe 3s ease-in-out infinite;transform-origin:50% 100%}
+        .albie-eat{animation:albie-eat 2.4s ease-in-out forwards;transform-origin:50% 100%}
+        .albie-wag{animation:albie-wag .32s ease-in-out infinite;transform-origin:50% 88%}
+        .albie-jump{animation:albie-jump .6s ease-out infinite;transform-origin:50% 100%}
+        @keyframes albie-bowl{0%{transform:translate(-50%,40px);opacity:0}15%{transform:translate(-50%,0);opacity:1}85%{transform:translate(-50%,0);opacity:1}100%{transform:translate(-50%,40px);opacity:0}}
+        @keyframes albie-heart{0%{transform:translate(-50%,30px) scale(.4);opacity:0}20%{transform:translate(-50%,0) scale(1.15);opacity:1}100%{transform:translate(-50%,-90px) scale(1.4);opacity:0}}
+        @keyframes albie-ball{0%{transform:translate(calc(-50% - 80px),0);opacity:0}15%{transform:translate(calc(-50% - 50px),-30px);opacity:1}35%{transform:translate(calc(-50% - 25px),0)}50%{transform:translate(-50%,-25px)}65%{transform:translate(calc(-50% + 25px),0)}85%{transform:translate(calc(-50% + 50px),-18px);opacity:1}100%{transform:translate(calc(-50% + 80px),0);opacity:0}}
+        @keyframes albie-caption{0%{opacity:0;transform:translateY(8px)}15%{opacity:1;transform:translateY(0)}85%{opacity:1}100%{opacity:0;transform:translateY(-4px)}}
+      `}</style>
+
+      {/* Caption above the dog */}
+      {actionState&&(actionState.by||actionState.avatar)&&(
+        <div key={`cap-${actionKey}`} style={{
+          fontFamily:dFont,fontSize:11,color:T.gold,
+          background:"#0d0d25cc",border:`1px solid ${T.gold}55`,
+          borderRadius:10,padding:"4px 10px",marginBottom:6,
+          whiteSpace:"nowrap",letterSpacing:.5,
+          animation:"albie-caption 2.4s ease-in-out forwards",
+        }}>
+          {actionState.avatar&&<span style={{marginRight:6}}>{actionState.avatar}</span>}
+          {actionState.by||"Someone"} {action==="feed"?"fed":action==="pet"?"pet":"played with"} Albie!
+        </div>
+      )}
+
+      {/* Dog + action overlays */}
+      <div style={{position:"relative",display:"flex",alignItems:"flex-end",justifyContent:"center",width:140,height:140}}>
+        {action==="pet"&&(
+          <div key={`heart-${actionKey}`} style={{
+            position:"absolute",top:-4,left:"50%",fontSize:38,lineHeight:1,
+            animation:"albie-heart 2s ease-out forwards",pointerEvents:"none",
+          }}>❤️</div>
+        )}
+
+        <div key={`dog-${actionKey}`} style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)"}}>
+          <AlbieSprite size={132} action={action}/>
+        </div>
+
+        {action==="feed"&&(
+          <div key={`bowl-${actionKey}`} style={{
+            position:"absolute",bottom:-12,left:"50%",
+            animation:"albie-bowl 2.4s ease-in-out forwards",
+            pointerEvents:"none",
+          }}>
+            <AlbieBowl/>
+          </div>
+        )}
+
+        {action==="play"&&(
+          <div key={`ball-${actionKey}`} style={{
+            position:"absolute",bottom:6,left:"50%",fontSize:30,lineHeight:1,
+            animation:"albie-ball 2s ease-out forwards",pointerEvents:"none",
+          }}>🎾</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AlbieActions({gameCode,playerName,avatar}){
+  // Rate-limit clicks so a player can't spam-lock Albie's animation.
+  const cooldownRef=useRef(0);
+  function trigger(action){
+    const now=Date.now();
+    if(now<cooldownRef.current)return;
+    cooldownRef.current=now+800;
+    storageSet(`game:${gameCode}:albie`,{action,at:now,by:playerName||"",avatar:avatar||""},true);
+  }
+  const btn=(emoji,label,key,color)=>(
+    <button key={key} onClick={()=>trigger(key)} style={{
+      padding:"10px 6px",borderRadius:12,
+      background:"#1a1a3e",border:`1px solid ${color}44`,
+      color:T.txt,fontFamily:font,fontSize:12,fontWeight:600,
+      cursor:"pointer",transition:"all .15s",
+      display:"flex",flexDirection:"column",alignItems:"center",gap:4,minWidth:0,
+    }}
+    onMouseEnter={e=>{e.currentTarget.style.borderColor=color;e.currentTarget.style.background=`${color}11`}}
+    onMouseLeave={e=>{e.currentTarget.style.borderColor=`${color}44`;e.currentTarget.style.background="#1a1a3e"}}
+    onMouseDown={e=>{e.currentTarget.style.transform="scale(.96)"}}
+    onMouseUp={e=>{e.currentTarget.style.transform="scale(1)"}}
+    >
+      <span style={{fontSize:22,lineHeight:1}}>{emoji}</span>
+      <span>{label}</span>
+    </button>
+  );
+  return (
+    <div style={{padding:"10px 14px 14px",borderTop:`1px solid ${T.cb}`,background:"#0d0d25"}}>
+      <div style={{fontSize:10,color:T.mut,textAlign:"center",marginBottom:8,letterSpacing:1.5,textTransform:"uppercase",fontWeight:600}}>
+        🐶 Say hi to Albie
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+        {btn("🍖","Feed Albie","feed",T.gold)}
+        {btn("💕","Pet Albie","pet",T.pink)}
+        {btn("🎾","Play with Albie","play",T.grn)}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
 //  SLIDE NAVIGATOR MODAL
 // ═══════════════════════════════════════════
 function SlideNavModal({slides,slideIndex,onJump,onClose}){
@@ -1084,6 +1289,9 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
       `}</style>
       <Confetti active={showConfetti}/>
       <div style={{position:"absolute",inset:0,background:bgs[slideIndex%3],transition:"background 1s"}}/>
+
+      {/* Albie — idle pixel pet in the bottom right; players can trigger reactions */}
+      <AlbieDog gameCode={gameCode}/>
 
       {/* Progress */}
       <div style={{position:"fixed",top:0,left:0,right:0,height:4,background:"#151530",zIndex:100}}>
@@ -1526,6 +1734,9 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
 
   function submitAnswer(qId,answer){setAnswers(prev=>({...prev,[qId]:answer}));setCurrentInput("");setMusicArtist("");setMusicSong("");}
   const already=currentQ&&answers[currentQ.id];
+  // Show the Albie minigame whenever the player isn't actively being prompted
+  // to answer — i.e. they're between questions or have already submitted.
+  const showAlbie=!(phase==="question"&&!already);
 
   return(
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:font,color:T.txt,display:"flex",flexDirection:"column"}}>
@@ -1690,6 +1901,7 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
           </div>
         )}
       </div>
+      {showAlbie&&<AlbieActions gameCode={gameCode} playerName={playerName} avatar={avatar}/>}
     </div>
   );
 }
