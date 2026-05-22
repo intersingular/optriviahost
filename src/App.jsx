@@ -997,13 +997,8 @@ function AlbieDog({gameCode}){
         }
         @keyframes albie-play-bounce{
           0%,100%{transform:translate(calc(-50% - 52px),4px)}
-          12.5%{transform:translate(calc(-50% - 39px),-6px)}
-          25%{transform:translate(calc(-50% - 26px),-11px)}
-          37.5%{transform:translate(calc(-50% - 13px),-13px)}
+          25%{transform:translate(calc(-50% + 0px),-14px)}
           50%{transform:translate(calc(-50% + 52px),4px)}
-          62.5%{transform:translate(calc(-50% + 39px),-6px)}
-          75%{transform:translate(calc(-50% + 26px),-11px)}
-          87.5%{transform:translate(calc(-50% + 13px),-13px)}
         }
         .albie-head-img.albie-idle{animation:albie-breathe 2.8s ease-in-out infinite}
         .albie-head-img.albie-chomp{animation:albie-chomp .35s ease-in-out infinite}
@@ -1064,7 +1059,7 @@ function AlbieDog({gameCode}){
               <span key={`toy-${actionKey}`} style={{
                 position:"absolute",top:"calc(22% + 80px)",left:"50%",
                 fontSize:32,lineHeight:1,pointerEvents:"none",
-                animation:"albie-play-bounce 1.8s ease-in-out infinite",
+                animation:"albie-play-bounce 2s cubic-bezier(0.4,0,0.2,1) infinite",
               }}>{propEmoji}</span>
             )}
           </div>
