@@ -83,6 +83,26 @@ const genId = () => Math.random().toString(36).slice(2, 8);
 const genCode = () => Math.random().toString(36).slice(2, 6).toUpperCase();
 function normalize(s) { return (s||"").toLowerCase().replace(/[^a-z0-9]/g,"").trim(); }
 
+// True when guess and correct differ by at most one insert, delete, or substitution.
+function withinOneEdit(a, b) {
+  if (a === b) return true;
+  const m = a.length, n = b.length;
+  if (Math.abs(m - n) > 1) return false;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    let rowMin = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+      rowMin = Math.min(rowMin, cur[j]);
+    }
+    if (rowMin > 1) return false;
+    prev = cur;
+  }
+  return prev[n] <= 1;
+}
+
 function fuzzyMatch(guess, correct) {
   const g = normalize(guess), c = normalize(correct);
   if (!g || !c) return false;
@@ -91,6 +111,8 @@ function fuzzyMatch(guess, correct) {
   if (g.includes(c) && c.length > 2) return true;
   const parts = correct.split(/\s*(?:and|&|,|-)\s*/i).map(normalize);
   if (parts.length > 1 && parts.every(p => g.includes(p))) return true;
+  // Close enough: one-letter typo (antartica → antarctica, etc.)
+  if (withinOneEdit(g, c)) return true;
   return false;
 }
 
@@ -114,13 +136,10 @@ function scoreAnswer(question, playerAnswer, round) {
   if (!playerAnswer) return 0;
   const base = roundPts(round);
   if (question.type === "music") {
-    // Music requires strict normalized equality on artist and song title
     const ans = typeof playerAnswer === "object" ? playerAnswer : {};
     let pts = 0;
-    const a = normalize(ans.artist || ""), tA = normalize(question.artist || "");
-    const s = normalize(ans.songTitle || ""), tS = normalize(question.songTitle || "");
-    if (a && tA && a === tA) pts += base;
-    if (s && tS && s === tS) pts += base;
+    if (fuzzyMatch(ans.artist || "", question.artist || "")) pts += base;
+    if (fuzzyMatch(ans.songTitle || "", question.songTitle || "")) pts += base;
     return pts;
   }
   if (question.type === "choice") return normalize(playerAnswer) === normalize(question.answer) ? base : 0;
