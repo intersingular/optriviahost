@@ -959,24 +959,19 @@ function AlbieDog({gameCode}){
         </div>
       )}
 
-      <div style={{position:"relative",padding:"10px 14px 8px"}}>
-        <div aria-hidden style={{
-          position:"absolute",inset:0,borderRadius:16,zIndex:0,
-          background:"linear-gradient(180deg,#151530f5,#0d0d25f5)",
-          border:`1px solid ${T.cb}`,boxShadow:"0 8px 32px #000000aa",
-        }}/>
+      <div style={{position:"relative",padding:"4px 8px"}}>
         <div key={actionKey} style={{
-          position:"relative",zIndex:1,width:168,minHeight:168,
+          position:"relative",width:168,minHeight:168,
           display:"flex",alignItems:"center",justifyContent:"center",
         }}>
-          <div style={{position:"relative",width:148}}>
+          <div style={{position:"relative",width:148,background:"transparent"}}>
             <img
               src={ALBIE_IMG}
               alt="Albie"
               className={`albie-head-img ${action==="feed"?"albie-chomp":"albie-idle"}`}
               style={{
-                width:"100%",height:"auto",display:"block",
-                filter:"drop-shadow(0 6px 16px #00000088)",
+                width:"100%",height:"auto",display:"block",background:"transparent",
+                filter:"drop-shadow(0 6px 14px rgba(0,0,0,.45))",
               }}
             />
 
