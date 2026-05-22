@@ -934,10 +934,13 @@ function AlbieDog({gameCode}){
         }
         @keyframes albie-play-bounce{
           0%,100%{transform:translate(calc(-50% - 52px),4px)}
-          20%{transform:translate(calc(-50% - 26px),-10px)}
-          40%{transform:translate(calc(-50% + 0px),-14px)}
-          60%{transform:translate(calc(-50% + 26px),-10px)}
-          80%{transform:translate(calc(-50% + 52px),4px)}
+          12.5%{transform:translate(calc(-50% - 39px),-6px)}
+          25%{transform:translate(calc(-50% - 26px),-11px)}
+          37.5%{transform:translate(calc(-50% - 13px),-13px)}
+          50%{transform:translate(calc(-50% + 52px),4px)}
+          62.5%{transform:translate(calc(-50% + 39px),-6px)}
+          75%{transform:translate(calc(-50% + 26px),-11px)}
+          87.5%{transform:translate(calc(-50% + 13px),-13px)}
         }
         .albie-head-img.albie-idle{animation:albie-breathe 2.8s ease-in-out infinite}
         .albie-head-img.albie-chomp{animation:albie-chomp .35s ease-in-out infinite}
@@ -998,7 +1001,7 @@ function AlbieDog({gameCode}){
               <span key={`toy-${actionKey}`} style={{
                 position:"absolute",top:"calc(22% + 80px)",left:"50%",
                 fontSize:32,lineHeight:1,pointerEvents:"none",
-                animation:"albie-play-bounce 1.65s cubic-bezier(0.42,0,0.58,1) infinite",
+                animation:"albie-play-bounce 1.8s ease-in-out infinite",
               }}>{propEmoji}</span>
             )}
           </div>
@@ -1735,9 +1738,10 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
 
   function submitAnswer(qId,answer){setAnswers(prev=>({...prev,[qId]:answer}));setCurrentInput("");setMusicArtist("");setMusicSong("");}
   const already=currentQ&&answers[currentQ.id];
-  // Show the Albie minigame whenever the player isn't actively being prompted
-  // to answer — i.e. they're between questions or have already submitted.
-  const showAlbie=ALBIE_ENABLED&&!(phase==="question"&&!already);
+  // Albie only exists on the host presentation screen (after Start Game).
+  // `game:state` is written there — not in the lobby — so hide commands until then.
+  const hostShowingAlbie=!!gameState;
+  const showAlbie=ALBIE_ENABLED&&hostShowingAlbie&&!(phase==="question"&&!already);
 
   return(
     <div className="player-game-shell" style={{
