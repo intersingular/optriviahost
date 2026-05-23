@@ -80,7 +80,9 @@ const PRELOADED_ROUNDS = [
 
 // ─── Helpers ─────────────────────────────
 const genId = () => Math.random().toString(36).slice(2, 8);
-const genCode = () => Math.random().toString(36).slice(2, 6).toUpperCase();
+const CODE_CHARS="ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789"; // no 0 — use O to avoid confusion
+const genCode=()=>Array.from({length:4},()=>CODE_CHARS[Math.floor(Math.random()*CODE_CHARS.length)]).join("");
+function normalizeCode(s){return (s||"").toUpperCase().replace(/0/g,"O")}
 function normalize(s) { return (s||"").toLowerCase().replace(/[^a-z0-9]/g,"").trim(); }
 
 // True when guess and correct differ by at most one insert, delete, or substitution.
@@ -268,11 +270,11 @@ function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
 function lsDel(k){try{localStorage.removeItem(k)}catch{}}
 const SESSION_HOST_KEY=c=>`triviahost:host:${c}`;
 const SESSION_PLAYER_KEY=c=>`triviahost:player:${c}`;
-// Allow short alphanumeric codes — matches genCode() output (4 chars uppercase)
+// Allow short alphanumeric codes — matches genCode() output (4 chars uppercase, no 0)
 function parsePathCode(){
   if(typeof window==="undefined")return null;
   const m=window.location.pathname.match(/^\/([A-Z0-9]{2,8})$/i);
-  return m?m[1].toUpperCase():null;
+  return m?normalizeCode(m[1]):null;
 }
 function gameUrl(code){
   if(typeof window==="undefined")return code;
@@ -1912,7 +1914,7 @@ function PlayerJoin({onJoin,onBack,prefillCode=""}){
   async function handleJoin(){
     if(!code.trim()||!name.trim()){setError("Enter both a code and your name");return;}
     setLoading(true);setError("");
-    const codeUp=code.toUpperCase();
+    const codeUp=normalizeCode(code);
     const trimmedName=name.trim();
     const gd=await storageGet(`game:${codeUp}:host`,true);
     if(!gd){setError("Game not found — check the code!");setLoading(false);return;}
@@ -1934,7 +1936,7 @@ function PlayerJoin({onJoin,onBack,prefillCode=""}){
       <div style={{fontSize:48,marginBottom:8}}>📱</div>
       <h2 style={{fontFamily:dFont,fontSize:32,margin:"0 0 32px"}}><GT>Join Game</GT></h2>
       <div style={{...cSty,maxWidth:380,width:"100%"}}>
-        <div style={{marginBottom:16}}><label style={{fontSize:12,color:T.mut,display:"block",marginBottom:6}}>Game Code</label><Inp value={code} onChange={v=>setCode(v.toUpperCase())} placeholder="ABCD" style={{fontSize:28,textAlign:"center",letterSpacing:6,fontFamily:dFont}}/></div>
+        <div style={{marginBottom:16}}><label style={{fontSize:12,color:T.mut,display:"block",marginBottom:6}}>Game Code</label><Inp value={code} onChange={v=>setCode(normalizeCode(v))} placeholder="ABCD" style={{fontSize:28,textAlign:"center",letterSpacing:6,fontFamily:dFont}}/></div>
         <div style={{marginBottom:20}}><label style={{fontSize:12,color:T.mut,display:"block",marginBottom:6}}>Your Name</label><Inp value={name} onChange={setName} placeholder="Enter your name..."/></div>
         {error&&<div style={{fontSize:13,color:T.pink,marginBottom:12}}>{error}</div>}
         <Btn onClick={handleJoin} variant="gold" style={{width:"100%",fontSize:18}} disabled={loading}>{loading?"Connecting...":"Join Game →"}</Btn>
