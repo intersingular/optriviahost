@@ -1125,6 +1125,209 @@ function AlbieActions({gameCode,playerName,avatar}){
 }
 
 // ═══════════════════════════════════════════
+//  ERIC — rounds 3–4 (music + romcom) host display + player actions
+// ═══════════════════════════════════════════
+const ERIC_ENABLED=true;
+const ERIC_ROUND_IDX=[2,3]; // 0-based: round 3 music, round 4 romcom
+function isEricRound(roundIdx){return roundIdx!==undefined&&roundIdx!==null&&ERIC_ROUND_IDX.includes(roundIdx)}
+
+const ERIC_IMGS={
+  neutral:"/eric/ericneutral.png",
+  cookie:"/eric/ericeating.png",
+  trombone:"/eric/ericblowing.png",
+  drum:"/eric/ericdrumming.png",
+};
+const ERIC_SOUNDS={
+  cookie:"/eric/cookie.mp3",
+  trombone:"/eric/trombone.mp3",
+  drum:"/eric/tadaa.mp3",
+};
+const ERIC_FOODS=["🍖","🥩","🍗","🦴","🥓","🍕","🌭","🍔","🥪","🧀","🍪","🍩","🥞","🍎","🍌","🥕"];
+
+function ericPick(list,seed){
+  return list[Math.abs(Math.floor(seed))%list.length];
+}
+
+function EricHost({gameCode}){
+  const[actionState,setActionState]=useState(null);
+  const audioRef=useRef(null);
+  const resetTimerRef=useRef(null);
+
+  useEffect(()=>{
+    if(!ERIC_ENABLED||!gameCode)return;
+    let lastAt=0,firstFetch=true,cancelled=false;
+    const poll=async()=>{
+      if(cancelled)return;
+      const a=await storageGet(`game:${gameCode}:eric`,true);
+      if(a&&typeof a.at==="number"){
+        if(firstFetch){lastAt=a.at;firstFetch=false;return;}
+        if(a.at>lastAt){
+          lastAt=a.at;
+          setActionState({type:a.action,by:a.by||"",avatar:a.avatar||"",at:a.at});
+        }
+      }else if(firstFetch){firstFetch=false}
+    };
+    poll();
+    const iv=setInterval(poll,700);
+    return()=>{cancelled=true;clearInterval(iv)};
+  },[gameCode]);
+
+  useEffect(()=>{
+    if(!ERIC_ENABLED||!actionState)return;
+    const action=actionState.type;
+    const src=ERIC_SOUNDS[action];
+    if(resetTimerRef.current){clearTimeout(resetTimerRef.current);resetTimerRef.current=null}
+    if(audioRef.current){audioRef.current.pause();audioRef.current=null}
+
+    const finish=()=>{
+      resetTimerRef.current=setTimeout(()=>setActionState(null),500);
+    };
+
+    if(!src){finish();return ()=>{if(resetTimerRef.current)clearTimeout(resetTimerRef.current)}}
+
+    const audio=new Audio(src);
+    audioRef.current=audio;
+    audio.addEventListener("ended",finish,{once:true});
+    audio.play().catch(()=>finish());
+
+    return()=>{
+      audio.removeEventListener("ended",finish);
+      audio.pause();
+      if(resetTimerRef.current)clearTimeout(resetTimerRef.current);
+    };
+  },[actionState]);
+
+  if(!ERIC_ENABLED)return null;
+
+  const action=actionState?.type||null;
+  const actionKey=actionState?`${actionState.type}-${actionState.at}`:"idle";
+  const imgSrc=action?ERIC_IMGS[action]||ERIC_IMGS.neutral:ERIC_IMGS.neutral;
+  const foodEmoji=action==="cookie"&&actionState?ericPick(ERIC_FOODS,actionState.at):null;
+  const captionVerb=action==="cookie"?"gave Eric a cookie":action==="trombone"?"played trombone for Eric":action==="drum"?"drummed with Eric":null;
+
+  const ericUI=(
+    <div className="eric-host-anchor" style={{
+      position:"fixed",bottom:88,right:20,zIndex:150,pointerEvents:"none",
+      display:"flex",flexDirection:"column",alignItems:"flex-end",
+    }}>
+      <style>{`
+        @keyframes eric-breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+        @keyframes eric-wiggle{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg)}}
+        @keyframes eric-caption{0%{opacity:0;transform:translateY(8px)}15%{opacity:1;transform:translateY(0)}85%{opacity:1}100%{opacity:0;transform:translateY(-4px)}}
+        @keyframes eric-nom{
+          0%,100%{transform:translate(-50%,0) scale(1)}
+          20%{transform:translate(-50%,4px) scale(.88)}
+          40%{transform:translate(-50%,0) scale(1.12)}
+          60%{transform:translate(-50%,3px) scale(.9)}
+          80%{transform:translate(-50%,0) scale(1.08)}
+        }
+        .eric-img.eric-idle{animation:eric-breathe 2.8s ease-in-out infinite}
+        .eric-img.eric-wiggle{animation:eric-wiggle .35s ease-in-out infinite}
+      `}</style>
+
+      {actionState&&captionVerb&&(actionState.by||actionState.avatar)&&(
+        <div key={`cap-${actionKey}`} style={{
+          fontFamily:dFont,fontSize:11,color:T.acc,
+          background:"#0d0d25cc",border:`1px solid ${T.acc}55`,
+          borderRadius:10,padding:"4px 10px",marginBottom:6,
+          whiteSpace:"nowrap",letterSpacing:.5,
+          animation:"eric-caption 2.6s ease-in-out forwards",
+        }}>
+          {actionState.avatar&&<span style={{marginRight:6}}>{actionState.avatar}</span>}
+          {actionState.by||"Someone"} {captionVerb}!
+        </div>
+      )}
+
+      <div style={{position:"relative",padding:"10px 14px 8px"}}>
+        <div aria-hidden style={{
+          position:"absolute",inset:0,borderRadius:16,zIndex:0,
+          background:"linear-gradient(180deg,#151530f5,#0d0d25f5)",
+          border:`1px solid ${T.cb}`,boxShadow:"0 8px 32px #000000aa",
+        }}/>
+        <div key={actionKey} style={{
+          position:"relative",zIndex:1,width:180,minHeight:180,
+          display:"flex",alignItems:"center",justifyContent:"center",
+        }}>
+          <div style={{position:"relative",width:160}}>
+            <img
+              src={imgSrc}
+              alt="Eric"
+              className={`eric-img ${action?"eric-wiggle":"eric-idle"}`}
+              style={{
+                width:"100%",height:"auto",display:"block",background:"transparent",
+                filter:"drop-shadow(0 6px 14px rgba(0,0,0,.45))",
+                transformOrigin:"50% 80%",
+              }}
+            />
+            {action==="cookie"&&foodEmoji&&(
+              <span key={`food-${actionKey}`} style={{
+                position:"absolute",bottom:"calc(18% - 40px)",left:"calc(50% + 20px)",
+                fontSize:34,lineHeight:1,pointerEvents:"none",
+                animation:"eric-nom .5s ease-in-out infinite",
+              }}>{foodEmoji}</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if(typeof document==="undefined") return null;
+  return createPortal(ericUI,document.body);
+}
+
+function EricActions({gameCode,playerName,avatar}){
+  const cooldownRef=useRef(0);
+  if(!ERIC_ENABLED)return null;
+  function trigger(action){
+    const now=Date.now();
+    if(now<cooldownRef.current)return;
+    cooldownRef.current=now+800;
+    storageSet(`game:${gameCode}:eric`,{action,at:now,by:playerName||"",avatar:avatar||""},true);
+  }
+  const btn=(emoji,label,key,color)=>(
+    <button key={key} onClick={()=>trigger(key)} style={{
+      padding:"10px 6px",borderRadius:12,
+      background:"#1a1a3e",border:`1px solid ${color}44`,
+      color:T.txt,fontFamily:font,fontSize:12,fontWeight:600,
+      cursor:"pointer",transition:"all .15s",
+      display:"flex",flexDirection:"column",alignItems:"center",gap:4,minWidth:0,
+    }}
+    onMouseEnter={e=>{e.currentTarget.style.borderColor=color;e.currentTarget.style.background=`${color}11`}}
+    onMouseLeave={e=>{e.currentTarget.style.borderColor=`${color}44`;e.currentTarget.style.background="#1a1a3e"}}
+    onMouseDown={e=>{e.currentTarget.style.transform="scale(.96)"}}
+    onMouseUp={e=>{e.currentTarget.style.transform="scale(1)"}}
+    >
+      <span className="eric-action-emoji" style={{fontSize:22,lineHeight:1}}>{emoji}</span>
+      <span className="eric-action-label">{label}</span>
+    </button>
+  );
+  return (
+    <div className="player-eric-bar" style={{
+      flexShrink:0,padding:"8px 12px",
+      paddingBottom:"max(10px, env(safe-area-inset-bottom))",
+      borderTop:`1px solid ${T.cb}`,background:"#0d0d25",
+    }}>
+      <style>{`
+        .player-eric-bar .eric-action-label{display:block}
+        @media (max-width:380px){
+          .player-eric-bar .eric-action-label{font-size:10px}
+          .player-eric-bar .eric-action-emoji{font-size:18px!important}
+        }
+      `}</style>
+      <div style={{fontSize:10,color:T.mut,textAlign:"center",marginBottom:6,letterSpacing:1.5,textTransform:"uppercase",fontWeight:600}}>
+        🎵 Say hi to Eric
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+        {btn("🍪","Cookie","cookie",T.gold)}
+        {btn("🎺","Trombone","trombone",T.pink)}
+        {btn("🥁","Drums","drum",T.grn)}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
 //  SLIDE NAVIGATOR MODAL
 // ═══════════════════════════════════════════
 function SlideNavModal({slides,slideIndex,onJump,onClose}){
@@ -1344,6 +1547,9 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
   const musicYtId=musicQ?.ytUrl?extractYTId(musicQ.ytUrl):null;
   const hasYTQuestion=slide.type==="question"&&musicYtId;
   const hasYTAnswer=slide.type==="answer"&&musicYtId;
+  const petRoundIdx=slide.roundIdx;
+  const showEricHost=ERIC_ENABLED&&petRoundIdx!==undefined&&isEricRound(petRoundIdx);
+  const showAlbieHost=ALBIE_ENABLED&&petRoundIdx!==undefined&&!showEricHost;
 
   return(
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:font,color:T.txt,position:"relative",overflow:"hidden"}}>
@@ -1362,7 +1568,8 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
       <Confetti active={showConfetti}/>
       <div style={{position:"absolute",inset:0,background:bgs[slideIndex%3],transition:"background 1s"}}/>
 
-      {ALBIE_ENABLED&&<AlbieDog gameCode={gameCode}/>}
+      {showEricHost&&<EricHost gameCode={gameCode}/>}
+      {showAlbieHost&&<AlbieDog gameCode={gameCode}/>}
 
       {/* Progress */}
       <div style={{position:"fixed",top:0,left:0,right:0,height:4,background:"#151530",zIndex:100}}>
@@ -1815,8 +2022,11 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
   const already=currentQ&&answers[currentQ.id];
   // Albie only exists on the host presentation screen (after Start Game).
   // `game:state` is written there — not in the lobby — so hide commands until then.
-  const hostShowingAlbie=!!gameState;
-  const showAlbie=ALBIE_ENABLED&&hostShowingAlbie&&!(phase==="question"&&!already);
+  const hostShowingPet=!!gameState;
+  const petRoundIdx=gameState?.roundIdx;
+  const showPetBar=hostShowingPet&&petRoundIdx!==undefined&&!(phase==="question"&&!already);
+  const showEric=ERIC_ENABLED&&showPetBar&&isEricRound(petRoundIdx);
+  const showAlbie=ALBIE_ENABLED&&showPetBar&&!showEric;
 
   return(
     <div className="player-game-shell" style={{
@@ -1839,8 +2049,8 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
       </div>
       <div style={{
         flex:1,minHeight:0,overflowY:"auto",WebkitOverflowScrolling:"touch",
-        display:"flex",flexDirection:"column",alignItems:"center",justifyContent:showAlbie?"flex-start":"center",
-        padding:showAlbie?"16px 16px 12px":"24px 16px",
+        display:"flex",flexDirection:"column",alignItems:"center",justifyContent:showPetBar?"flex-start":"center",
+        padding:showPetBar?"16px 16px 12px":"24px 16px",
       }}>
 
         {phase==="waiting"&&(()=>{
@@ -1988,6 +2198,7 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
           </div>
         )}
       </div>
+      {showEric&&<EricActions gameCode={gameCode} playerName={playerName} avatar={avatar}/>}
       {showAlbie&&<AlbieActions gameCode={gameCode} playerName={playerName} avatar={avatar}/>}
     </div>
   );
