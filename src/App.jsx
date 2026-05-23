@@ -1203,7 +1203,6 @@ function EricHost({gameCode}){
   const actionKey=actionState?`${actionState.type}-${actionState.at}`:"idle";
   const imgSrc=action?ERIC_IMGS[action]||ERIC_IMGS.neutral:ERIC_IMGS.neutral;
   const foodEmoji=action==="cookie"&&actionState?ericPick(ERIC_FOODS,actionState.at):null;
-  const captionVerb=action==="cookie"?"gave Eric a cookie":action==="trombone"?"played trombone for Eric":action==="drum"?"drummed with Eric":null;
 
   const ericUI=(
     <div className="eric-host-anchor" style={{
@@ -1213,7 +1212,6 @@ function EricHost({gameCode}){
       <style>{`
         @keyframes eric-breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
         @keyframes eric-wiggle{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg)}}
-        @keyframes eric-caption{0%{opacity:0;transform:translateY(8px)}15%{opacity:1;transform:translateY(0)}85%{opacity:1}100%{opacity:0;transform:translateY(-4px)}}
         @keyframes eric-nom{
           0%,100%{transform:translate(-50%,0) scale(1)}
           20%{transform:translate(-50%,4px) scale(.88)}
@@ -1224,19 +1222,6 @@ function EricHost({gameCode}){
         .eric-img.eric-idle{animation:eric-breathe 2.8s ease-in-out infinite}
         .eric-img.eric-wiggle{animation:eric-wiggle .35s ease-in-out infinite}
       `}</style>
-
-      {actionState&&captionVerb&&(actionState.by||actionState.avatar)&&(
-        <div key={`cap-${actionKey}`} style={{
-          fontFamily:dFont,fontSize:11,color:T.acc,
-          background:"#0d0d25cc",border:`1px solid ${T.acc}55`,
-          borderRadius:10,padding:"4px 10px",marginBottom:6,
-          whiteSpace:"nowrap",letterSpacing:.5,
-          animation:"eric-caption 2.6s ease-in-out forwards",
-        }}>
-          {actionState.avatar&&<span style={{marginRight:6}}>{actionState.avatar}</span>}
-          {actionState.by||"Someone"} {captionVerb}!
-        </div>
-      )}
 
       <div style={{position:"relative",padding:"10px 14px 8px"}}>
         <div aria-hidden style={{
@@ -1261,8 +1246,8 @@ function EricHost({gameCode}){
             />
             {action==="cookie"&&foodEmoji&&(
               <span key={`food-${actionKey}`} style={{
-                position:"absolute",bottom:"calc(18% - 40px)",left:"calc(50% + 20px)",
-                fontSize:34,lineHeight:1,pointerEvents:"none",
+                position:"absolute",bottom:"calc(18% - 30px)",left:"calc(50% + 25px)",
+                fontSize:102,lineHeight:1,pointerEvents:"none",
                 animation:"eric-nom .5s ease-in-out infinite",
               }}>{foodEmoji}</span>
             )}
@@ -1285,13 +1270,13 @@ function EricActions({gameCode,playerName,avatar}){
     cooldownRef.current=now+800;
     storageSet(`game:${gameCode}:eric`,{action,at:now,by:playerName||"",avatar:avatar||""},true);
   }
-  const btn=(emoji,label,key,color)=>(
+  const btn=(emoji,key,color)=>(
     <button key={key} onClick={()=>trigger(key)} style={{
       padding:"10px 6px",borderRadius:12,
       background:"#1a1a3e",border:`1px solid ${color}44`,
       color:T.txt,fontFamily:font,fontSize:12,fontWeight:600,
       cursor:"pointer",transition:"all .15s",
-      display:"flex",flexDirection:"column",alignItems:"center",gap:4,minWidth:0,
+      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minWidth:0,
     }}
     onMouseEnter={e=>{e.currentTarget.style.borderColor=color;e.currentTarget.style.background=`${color}11`}}
     onMouseLeave={e=>{e.currentTarget.style.borderColor=`${color}44`;e.currentTarget.style.background="#1a1a3e"}}
@@ -1299,7 +1284,6 @@ function EricActions({gameCode,playerName,avatar}){
     onMouseUp={e=>{e.currentTarget.style.transform="scale(1)"}}
     >
       <span className="eric-action-emoji" style={{fontSize:22,lineHeight:1}}>{emoji}</span>
-      <span className="eric-action-label">{label}</span>
     </button>
   );
   return (
@@ -1309,9 +1293,7 @@ function EricActions({gameCode,playerName,avatar}){
       borderTop:`1px solid ${T.cb}`,background:"#0d0d25",
     }}>
       <style>{`
-        .player-eric-bar .eric-action-label{display:block}
         @media (max-width:380px){
-          .player-eric-bar .eric-action-label{font-size:10px}
           .player-eric-bar .eric-action-emoji{font-size:18px!important}
         }
       `}</style>
@@ -1319,9 +1301,9 @@ function EricActions({gameCode,playerName,avatar}){
         🎵 Say hi to Eric
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
-        {btn("🍪","Cookie","cookie",T.gold)}
-        {btn("🎺","Trombone","trombone",T.pink)}
-        {btn("🥁","Drums","drum",T.grn)}
+        {btn("🍪","cookie",T.gold)}
+        {btn("🎺","trombone",T.pink)}
+        {btn("🥁","drum",T.grn)}
       </div>
     </div>
   );
