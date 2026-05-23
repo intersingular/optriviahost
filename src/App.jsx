@@ -1246,8 +1246,8 @@ function EricHost({gameCode}){
             />
             {action==="cookie"&&foodEmoji&&(
               <span key={`food-${actionKey}`} style={{
-                position:"absolute",bottom:"calc(18% - 30px)",left:"calc(50% + 25px)",
-                fontSize:102,lineHeight:1,pointerEvents:"none",
+                position:"absolute",bottom:"calc(18% - 34px)",left:"calc(50% + 25px)",
+                fontSize:86,lineHeight:1,pointerEvents:"none",
                 animation:"eric-nom .5s ease-in-out infinite",
               }}>{foodEmoji}</span>
             )}
