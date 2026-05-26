@@ -80,22 +80,16 @@ const PRELOADED_ROUNDS = [
 
 // ─── Helpers ─────────────────────────────
 const genId = () => Math.random().toString(36).slice(2, 8);
-const CODE_CHARS="ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789"; // no 0 — use O to avoid confusion
 const ERIC_PROMO_CODES=["ERIC","ER1C","3RIC","3R1C"];
-const ERIC_PROMO_START=Date.UTC(2026,4,25,0,0,0); // 24h window — May 25 2026 00:00 UTC
-const ERIC_PROMO_END=ERIC_PROMO_START+24*60*60*1000;
-function randomRoomCode(){return Array.from({length:4},()=>CODE_CHARS[Math.floor(Math.random()*CODE_CHARS.length)]).join("")}
 async function allocateRoomCode(){
-  const now=Date.now();
-  if(now<ERIC_PROMO_START||now>=ERIC_PROMO_END)return randomRoomCode();
   try{
     const counterRef=ref(db,"promo/ericHostCount");
     const result=await runTransaction(counterRef,(cur)=>(cur||0)+1);
     const count=result.snapshot.val();
     return ERIC_PROMO_CODES[(count-1)%ERIC_PROMO_CODES.length];
   }catch(e){
-    console.error("allocateRoomCode promo counter error:",e);
-    return randomRoomCode();
+    console.error("allocateRoomCode error:",e);
+    return ERIC_PROMO_CODES[0];
   }
 }
 function normalizeCode(s){return (s||"").toUpperCase().replace(/0/g,"O")}

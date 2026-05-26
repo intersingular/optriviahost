@@ -34,13 +34,6 @@ for (let count = 1; count <= 8; count++) {
 }
 console.log("  rotation mapping: OK");
 
-// ── Unit: promo window gate ──
-const ERIC_PROMO_START = Date.UTC(2026, 4, 25, 0, 0, 0);
-const ERIC_PROMO_END = ERIC_PROMO_START + 24 * 60 * 60 * 1000;
-const now = Date.now();
-assert(now >= ERIC_PROMO_START && now < ERIC_PROMO_END, "promo window should be active for live test");
-console.log("  promo window active: OK");
-
 // ── Firebase: atomic counter + rotation ──
 console.log("Firebase transaction tests...");
 const app = initializeApp(firebaseConfig);
