@@ -2143,14 +2143,14 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
               <>
                 {currentQ.answerImage&&<div style={{display:"flex",justifyContent:"center",marginBottom:14}}><img src={currentQ.answerImage} alt="" style={{maxWidth:"100%",maxHeight:312,objectFit:"contain",borderRadius:10}}/></div>}
                 {currentQ.type==="music"?(
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16,width:"100%"}}>
-                    <div style={{padding:"16px 20px",borderRadius:14,background:`${T.grn}15`,border:`2px solid ${T.grn}`,minWidth:0}}>
+                  <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center",marginBottom:16}}>
+                    <div style={{padding:"16px 28px",borderRadius:14,background:`${T.grn}15`,border:`2px solid ${T.grn}`,width:"100%"}}>
                       <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2.5,color:T.grn,marginBottom:4,fontWeight:800}}>🎤 Artist</div>
-                      <div style={{fontFamily:dFont,fontSize:22,color:T.grn,wordBreak:"break-word"}}>{currentQ.artist}</div>
+                      <div style={{fontFamily:dFont,fontSize:22,color:T.grn}}>{currentQ.artist}</div>
                     </div>
-                    <div style={{padding:"16px 20px",borderRadius:14,background:`${T.grn}15`,border:`2px solid ${T.grn}`,minWidth:0}}>
+                    <div style={{padding:"16px 28px",borderRadius:14,background:`${T.grn}15`,border:`2px solid ${T.grn}`,width:"100%"}}>
                       <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2.5,color:T.grn,marginBottom:4,fontWeight:800}}>🎵 Song Title</div>
-                      <div style={{fontFamily:dFont,fontSize:22,color:T.grn,wordBreak:"break-word"}}>{currentQ.songTitle}</div>
+                      <div style={{fontFamily:dFont,fontSize:22,color:T.grn}}>{currentQ.songTitle}</div>
                     </div>
                   </div>
                 ):(
