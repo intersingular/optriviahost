@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { ref, set, get, runTransaction } from "firebase/database";
+import { ref, set, get } from "firebase/database";
 import { ref as sref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import QRCode from "qrcode";
 import { db, storage } from "./firebase";
@@ -80,18 +80,8 @@ const PRELOADED_ROUNDS = [
 
 // ─── Helpers ─────────────────────────────
 const genId = () => Math.random().toString(36).slice(2, 8);
-const ERIC_PROMO_CODES=["ERIC","ER1C","3RIC","3R1C"];
-async function allocateRoomCode(){
-  try{
-    const counterRef=ref(db,"promo/ericHostCount");
-    const result=await runTransaction(counterRef,(cur)=>(cur||0)+1);
-    const count=result.snapshot.val();
-    return ERIC_PROMO_CODES[(count-1)%ERIC_PROMO_CODES.length];
-  }catch(e){
-    console.error("allocateRoomCode error:",e);
-    return ERIC_PROMO_CODES[0];
-  }
-}
+const CODE_CHARS="ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789"; // no 0 — use O to avoid confusion
+const genCode=()=>Array.from({length:4},()=>CODE_CHARS[Math.floor(Math.random()*CODE_CHARS.length)]).join("");
 function normalizeCode(s){return (s||"").toUpperCase().replace(/0/g,"O")}
 function normalize(s) { return (s||"").toLowerCase().replace(/[^a-z0-9]/g,"").trim(); }
 
@@ -2297,8 +2287,8 @@ export default function TriviaApp(){
     return()=>window.removeEventListener("popstate",handler);
   },[screen,gameCode,playerGameCode]);
 
-  async function startHostLobby(){
-    const c=await allocateRoomCode();
+  function startHostLobby(){
+    const c=genCode();
     setGameCode(c);setPlayers([]);setSlideIndex(0);
     storageSet(`game:${c}:host`,{cover,rounds},true);
     storageSet(`game:${c}:overrides`,{},true);
