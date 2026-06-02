@@ -1730,12 +1730,12 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
               <div style={{animation:"revealPop .6s cubic-bezier(.17,.67,.35,1.3)"}}>
                 {slide.question.answerImage&&<div style={{display:"flex",justifyContent:"center",marginBottom:20}}><img src={slide.question.answerImage} alt="" style={{maxWidth:"min(728px,90%)",maxHeight:390,objectFit:"contain",borderRadius:16,border:`1px solid ${T.cb}`,boxShadow:"0 4px 30px #00000055"}}/></div>}
                 {slide.question.type==="music"?(()=>{const sub=roundPts(slide.round);return (
-                  <div style={{display:"inline-flex",flexDirection:"column",gap:12,alignItems:"center"}}>
-                    <div style={{padding:"20px 40px",borderRadius:16,background:"linear-gradient(135deg,#43E97B22,#38F9D722)",border:`2px solid ${T.grn}`}}>
+                  <div style={{display:"flex",flexDirection:"row",flexWrap:"wrap",gap:12,alignItems:"stretch",justifyContent:"center",width:"100%",maxWidth:1100}}>
+                    <div style={{flex:"1 1 280px",padding:"20px 40px",borderRadius:16,background:"linear-gradient(135deg,#43E97B22,#38F9D722)",border:`2px solid ${T.grn}`}}>
                       <div style={{fontSize:12,textTransform:"uppercase",letterSpacing:2.5,color:T.grn,marginBottom:6,fontWeight:800}}>🎤 Artist ({sub} pt{sub===1?"":"s"})</div>
                       <div style={{fontFamily:dFont,fontSize:36,color:T.grn}}>{slide.question.artist}</div>
                     </div>
-                    <div style={{padding:"20px 40px",borderRadius:16,background:"linear-gradient(135deg,#43E97B22,#38F9D722)",border:`2px solid ${T.grn}`}}>
+                    <div style={{flex:"1 1 280px",padding:"20px 40px",borderRadius:16,background:"linear-gradient(135deg,#43E97B22,#38F9D722)",border:`2px solid ${T.grn}`}}>
                       <div style={{fontSize:12,textTransform:"uppercase",letterSpacing:2.5,color:T.grn,marginBottom:6,fontWeight:800}}>🎵 Song Title ({sub} pt{sub===1?"":"s"})</div>
                       <div style={{fontFamily:dFont,fontSize:36,color:T.grn}}>{slide.question.songTitle}</div>
                     </div>
@@ -2143,14 +2143,14 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
               <>
                 {currentQ.answerImage&&<div style={{display:"flex",justifyContent:"center",marginBottom:14}}><img src={currentQ.answerImage} alt="" style={{maxWidth:"100%",maxHeight:312,objectFit:"contain",borderRadius:10}}/></div>}
                 {currentQ.type==="music"?(
-                  <div style={{display:"flex",flexDirection:"column",gap:10,alignItems:"center",marginBottom:16}}>
-                    <div style={{padding:"16px 28px",borderRadius:14,background:`${T.grn}15`,border:`2px solid ${T.grn}`,width:"100%"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16,width:"100%"}}>
+                    <div style={{padding:"16px 20px",borderRadius:14,background:`${T.grn}15`,border:`2px solid ${T.grn}`,minWidth:0}}>
                       <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2.5,color:T.grn,marginBottom:4,fontWeight:800}}>🎤 Artist</div>
-                      <div style={{fontFamily:dFont,fontSize:22,color:T.grn}}>{currentQ.artist}</div>
+                      <div style={{fontFamily:dFont,fontSize:22,color:T.grn,wordBreak:"break-word"}}>{currentQ.artist}</div>
                     </div>
-                    <div style={{padding:"16px 28px",borderRadius:14,background:`${T.grn}15`,border:`2px solid ${T.grn}`,width:"100%"}}>
+                    <div style={{padding:"16px 20px",borderRadius:14,background:`${T.grn}15`,border:`2px solid ${T.grn}`,minWidth:0}}>
                       <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:2.5,color:T.grn,marginBottom:4,fontWeight:800}}>🎵 Song Title</div>
-                      <div style={{fontFamily:dFont,fontSize:22,color:T.grn}}>{currentQ.songTitle}</div>
+                      <div style={{fontFamily:dFont,fontSize:22,color:T.grn,wordBreak:"break-word"}}>{currentQ.songTitle}</div>
                     </div>
                   </div>
                 ):(
