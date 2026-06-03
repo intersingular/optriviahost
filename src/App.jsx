@@ -14,9 +14,9 @@ const PRELOADED_ROUNDS = [
   {
     id:"r1", name:'Everything "A"', emoji:"🅰️",
     questions:[
-      {id:"r1q1",type:"text",text:"What was the instant messaging program that operated from 1997 to 2017?",answer:"AIM",hint:"AOL product"},
+      {id:"r1q1",type:"text",text:"What was the instant messaging program that operated from 1997 to 2017?",answer:"AIM"},
       {id:"r1q2",type:"text",text:'Retailer focusing on "casual luxury" fashion and specifically "the good-looking, cool kids"',answer:"Abercrombie & Fitch"},
-      {id:"r1q3",type:"text",text:'Who is the American heartthrob who stole our hearts as "Prince Charming" of North Valley High?',answer:"Austin Ames",hint:"He secretly pens romantic emails as Nomad"},
+      {id:"r1q3",type:"text",text:'Who is the American heartthrob who stole our hearts as "Prince Charming" of North Valley High?',answer:"Austin Ames"},
       {id:"r1q4",type:"text",text:"A range of divinatory practices, recognized as pseudoscientific, that proposes information about human affairs and terrestrial events",answer:"Astrology"},
       {id:"r1q5",type:"text",text:"Stereotype heavily associated with urban nightlife, Southern California rave and EDM culture, and a love for boba",answer:"ABG"},
       {id:"r1q6",type:"text",text:"Who was the musical guest on Saturday Night Live who was caught lip-syncing, then did an Irish jig?",answer:"Ashlee Simpson"},
@@ -239,6 +239,7 @@ function createBlankTrivia(){
     name:"Untitled Trivia",
     cover:{...DEFAULT_COVER},
     rounds:[{id:genId(),name:"Round 1",emoji:"❓",image:"",pointsPerQuestion:1,questions:[]}],
+    albieEnabled:true,
     createdAt:Date.now(),
     updatedAt:Date.now(),
   };
@@ -249,6 +250,7 @@ function duplicateTriviaPack(source,name){
     name:name||`${source.name} (Copy)`,
     cover:deepClone(source.cover||DEFAULT_COVER),
     rounds:cloneRoundIds(source.rounds||[]),
+    albieEnabled:source.albieEnabled!==false,
     createdAt:Date.now(),
     updatedAt:Date.now(),
   };
@@ -260,6 +262,10 @@ function triviaStats(rounds){
 }
 function getHostableTrivias(userTrivias){
   return[getPremadeBachelorette(),...userTrivias];
+}
+function isPremadeBachelorettePack(packOrId){
+  const id=typeof packOrId==="string"?packOrId:packOrId?.id;
+  return id===PREMADE_BACHELORETTE_ID;
 }
 
 function buildSlides(rounds, includeObj=true, cover=null) {
@@ -704,12 +710,51 @@ function ImagePicker({label,value,onChange}){
 // ═══════════════════════════════════════════
 //  HOME
 // ═══════════════════════════════════════════
+function HomeNavButton({item,compact=false,delay=0,onNavigate}){
+  const iconSize=compact?24:36;
+  const titleSize=compact?14:20;
+  const descSize=compact?11:13;
+  const gap=compact?10:16;
+  const pad=compact?"12px 14px":"16px 18px";
+  const accentBg="#FFCF4818";
+  const accentBorder="#FFCF4866";
+  return(
+    <button
+      onClick={()=>onNavigate(item.target)}
+      style={{
+        ...cSty,
+        display:"flex",alignItems:"center",gap,padding:pad,cursor:"pointer",textAlign:"left",width:"100%",transition:"all .2s",
+        animation:`slideUp .5s ease ${delay}s both`,
+        ...(compact?{background:accentBg,border:`1px solid ${accentBorder}`}:{}),
+      }}
+      onMouseEnter={e=>{
+        e.currentTarget.style.borderColor=compact?T.gold:T.acc;
+        e.currentTarget.style.background=compact?"#FFCF4828":T.card;
+        e.currentTarget.style.transform=compact?"translateY(-2px)":"translateX(6px)";
+      }}
+      onMouseLeave={e=>{
+        e.currentTarget.style.borderColor=compact?accentBorder:T.cb;
+        e.currentTarget.style.background=compact?accentBg:T.card;
+        e.currentTarget.style.transform=compact?"translateY(0)":"translateX(0)";
+      }}
+    >
+      <span style={{fontSize:iconSize,flexShrink:0}}>{item.icon}</span>
+      <div style={{minWidth:0}}>
+        <div style={{fontFamily:dFont,fontSize:titleSize,color:compact?"#FFE08A":T.txt,lineHeight:1.2}}>{item.label}</div>
+        <div style={{fontSize:descSize,color:compact?"#FFCF48AA":T.mut,marginTop:compact?1:2,lineHeight:1.3}}>{item.desc}</div>
+      </div>
+    </button>
+  );
+}
+
 function HomeScreen({onNavigate}){
-  const items=[
-    {icon:"💍",label:"View Premade Trivia",desc:"The bachelorette original",target:"premade"},
-    {icon:"🛠️",label:"Build Your Own Trivia",desc:"Create & edit questions",target:"builder-hub"},
+  const primary=[
     {icon:"🎤",label:"Host a Game",desc:"Test your friends' knowledge",target:"host-select"},
     {icon:"📱",label:"Join a Game",desc:"Play on your device",target:"player-join"},
+  ];
+  const secondary=[
+    {icon:"💍",label:"Premade Trivia",desc:"The bachelorette original",target:"premade"},
+    {icon:"🛠️",label:"Build Your Own",desc:"Create & edit questions",target:"builder-hub"},
   ];
   return(
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,fontFamily:font}}>
@@ -718,14 +763,14 @@ function HomeScreen({onNavigate}){
       <h1 style={{fontFamily:dFont,fontSize:48,margin:0,textAlign:"center"}}><GT>TriviaHost</GT></h1>
       <p style={{color:T.mut,fontSize:16,marginTop:8,marginBottom:48,textAlign:"center"}}>Build · Present · Play</p>
       <div style={{display:"flex",flexDirection:"column",gap:16,width:"100%",maxWidth:420}}>
-        {items.map((it,i)=>(
-          <button key={it.target} onClick={()=>onNavigate(it.target)} style={{...cSty,display:"flex",alignItems:"center",gap:16,cursor:"pointer",textAlign:"left",width:"100%",transition:"all .2s",animation:`slideUp .5s ease ${i*.1}s both`}}
-          onMouseEnter={e=>{e.currentTarget.style.borderColor=T.acc;e.currentTarget.style.transform="translateX(6px)"}}
-          onMouseLeave={e=>{e.currentTarget.style.borderColor=T.cb;e.currentTarget.style.transform="translateX(0)"}}>
-            <span style={{fontSize:36}}>{it.icon}</span>
-            <div><div style={{fontFamily:dFont,fontSize:20,color:T.txt}}>{it.label}</div><div style={{fontSize:13,color:T.mut,marginTop:2}}>{it.desc}</div></div>
-          </button>
+        {primary.map((it,i)=>(
+          <HomeNavButton key={it.target} item={it} onNavigate={onNavigate} delay={i*.1}/>
         ))}
+        <div style={{display:"flex",gap:12,width:"100%",animation:"slideUp .5s ease .2s both"}}>
+          {secondary.map(it=>(
+            <HomeNavButton key={it.target} item={it} compact onNavigate={onNavigate} delay={0}/>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -735,23 +780,23 @@ function TriviaPackCard({pack,onAction,actionLabel,secondaryAction}){
   const stats=triviaStats(pack.rounds);
   return(
     <div style={{...cSty,width:"100%",textAlign:"left"}}>
-      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
         <div style={{minWidth:0,flex:1}}>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
-            <span style={{fontSize:28,lineHeight:1}}>{pack.cover?.emoji||"🎉"}</span>
+            {!pack.premade&&<span style={{fontSize:28,lineHeight:1}}>{pack.cover?.emoji||"🎉"}</span>}
             <div style={{fontFamily:dFont,fontSize:20,color:T.txt}}>{pack.name}</div>
             {pack.premade&&<span style={{fontSize:10,padding:"3px 8px",borderRadius:999,background:`${T.gold}22`,border:`1px solid ${T.gold}44`,color:T.gold,fontWeight:700,letterSpacing:.5}}>PREMADE</span>}
             {pack.locked&&<span style={{fontSize:10,padding:"3px 8px",borderRadius:999,background:`${T.mut}22`,border:`1px solid ${T.cb}`,color:T.mut,fontWeight:700}}>LOCKED</span>}
           </div>
-          {pack.description&&<div style={{fontSize:13,color:T.mut,marginBottom:8}}>{pack.description}</div>}
           <div style={{fontSize:12,color:T.mut}}>{stats.roundCount} rounds · {stats.totalQ} questions · {stats.totalPts} pts</div>
-          {pack.cover?.title&&<div style={{fontSize:12,color:T.acc,marginTop:6}}>{pack.cover.title}{pack.cover.subtitle?` — ${pack.cover.subtitle}`:""}</div>}
         </div>
+        <Btn onClick={()=>onAction(pack)} variant="gold" style={{fontSize:13,padding:"10px 18px",flexShrink:0}}>{actionLabel}</Btn>
       </div>
-      <div style={{display:"flex",gap:8,marginTop:14,flexWrap:"wrap"}}>
-        <Btn onClick={()=>onAction(pack)} variant="gold" style={{fontSize:13,padding:"10px 18px"}}>{actionLabel}</Btn>
-        {secondaryAction&&secondaryAction(pack)}
-      </div>
+      {secondaryAction&&(
+        <div style={{display:"flex",gap:8,marginTop:14,flexWrap:"wrap"}}>
+          {secondaryAction(pack)}
+        </div>
+      )}
     </div>
   );
 }
@@ -779,8 +824,11 @@ function PremadeScreen({onBack,onHost,onDuplicate,onView}){
             </>
           )}
         />
-        <div style={{...cSty,marginTop:16,fontSize:13,color:T.mut,lineHeight:1.6}}>
-          This trivia is read-only for all users. Duplicate it to create your own editable copy with the same questions.
+        <div style={{
+          marginTop:16,padding:"14px 16px",borderRadius:12,fontSize:13,lineHeight:1.6,
+          background:"#FFCF4818",border:"1px solid #FFCF4866",color:"#FFE08A",
+        }}>
+          ℹ️ This trivia is read-only for all users. Duplicate it to create your own editable copy with the same questions.
         </div>
       </div>
     </div>
@@ -810,6 +858,8 @@ function HostSelectScreen({userTrivias,onBack,onHost}){
 }
 
 function BuilderHub({userTrivias,onBack,onCreate,onEdit,onDelete}){
+  const[deleteId,setDeleteId]=useState(null);
+  const deleteTarget=userTrivias.find(t=>t.id===deleteId);
   return(
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:font,color:T.txt,padding:24}}>
       <style>{globalCSS}</style>
@@ -840,7 +890,7 @@ function BuilderHub({userTrivias,onBack,onCreate,onEdit,onDelete}){
                   </div>
                   <div style={{display:"flex",gap:8,flexShrink:0}}>
                     <Btn onClick={()=>onEdit(pack.id)} style={{fontSize:12,padding:"8px 14px"}}>Edit</Btn>
-                    <Btn onClick={()=>onDelete(pack.id)} variant="ghost" style={{fontSize:12,padding:"8px 14px",color:T.pink}}>Delete</Btn>
+                    <Btn onClick={()=>setDeleteId(pack.id)} variant="ghost" style={{fontSize:12,padding:"8px 14px",color:T.pink}}>Delete</Btn>
                   </div>
                 </div>
               </div>
@@ -848,6 +898,19 @@ function BuilderHub({userTrivias,onBack,onCreate,onEdit,onDelete}){
           </div>
         )}
       </div>
+      {deleteId&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:24}} onClick={()=>setDeleteId(null)}>
+          <div style={{...cSty,maxWidth:380,textAlign:"center",border:`1px solid ${T.pink}44`}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:36,marginBottom:12}}>🗑️</div>
+            <h3 style={{fontFamily:dFont,fontSize:22,margin:"0 0 8px",color:T.txt}}>Delete {deleteTarget?.name||"this trivia"}?</h3>
+            <p style={{color:T.mut,fontSize:14,marginBottom:20}}>Are you sure? This can't be undone.</p>
+            <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+              <Btn onClick={()=>setDeleteId(null)} variant="ghost" style={{padding:"10px 20px",fontSize:14}}>Cancel</Btn>
+              <Btn onClick={()=>{onDelete(deleteId);setDeleteId(null)}} variant="reveal" style={{padding:"10px 20px",fontSize:14}}>Delete</Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -855,18 +918,19 @@ function BuilderHub({userTrivias,onBack,onCreate,onEdit,onDelete}){
 // ═══════════════════════════════════════════
 //  BUILDER
 // ═══════════════════════════════════════════
-function Builder({triviaName,onTriviaNameChange,cover,setCover,rounds,setRounds,onBack,onStartHost,readOnly=false,onDuplicate}){
+function Builder({triviaName,onTriviaNameChange,cover,setCover,rounds,setRounds,albieEnabled,onAlbieEnabledChange,onBack,onSave,onStartHost,readOnly=false,onDuplicate}){
   const[activeRound,setActiveRound]=useState(0); // -1 = cover slide editor
   const[editingQ,setEditingQ]=useState(null);
   const[showAddRound,setShowAddRound]=useState(false);
   const[newRoundName,setNewRoundName]=useState("");
   const[showRoundSettings,setShowRoundSettings]=useState(false);
+  const[saveFlash,setSaveFlash]=useState(false);
   const round=activeRound>=0?rounds[activeRound]:null;
   const locked=!!readOnly;
 
   function addRound(){if(locked||!newRoundName.trim())return;setRounds(p=>[...p,{id:genId(),name:newRoundName.trim(),emoji:"❓",image:"",pointsPerQuestion:1,questions:[]}]);setNewRoundName("");setShowAddRound(false);setActiveRound(rounds.length)}
   function deleteRound(idx){if(locked)return;setRounds(p=>p.filter((_,i)=>i!==idx));setActiveRound(Math.max(0,activeRound-1))}
-  function addQuestion(){if(locked)return;const nq={id:genId(),type:"text",text:"",answer:"",hint:""};setRounds(p=>p.map((r,i)=>i===activeRound?{...r,questions:[...r.questions,nq]}:r));setEditingQ(round.questions.length)}
+  function addQuestion(){if(locked)return;const nq={id:genId(),type:"text",text:"",answer:""};setRounds(p=>p.map((r,i)=>i===activeRound?{...r,questions:[...r.questions,nq]}:r));setEditingQ(round.questions.length)}
   function updateQ(qi,u){if(locked)return;setRounds(p=>p.map((r,i)=>i===activeRound?{...r,questions:r.questions.map((q,j)=>j===qi?{...q,...u}:q)}:r))}
   function deleteQ(qi){if(locked)return;setRounds(p=>p.map((r,i)=>i===activeRound?{...r,questions:r.questions.filter((_,j)=>j!==qi)}:r));setEditingQ(null)}
   function updateRound(u){if(locked)return;setRounds(p=>p.map((r,i)=>i===activeRound?{...r,...u}:r))}
@@ -904,7 +968,11 @@ function Builder({triviaName,onTriviaNameChange,cover,setCover,rounds,setRounds,
           .builder-newround{margin-top:0;flex-shrink:0;min-width:160px;align-self:center}
           .builder-newround-btn{margin-top:0;padding:8px 12px;white-space:nowrap}
           .builder-main{padding:16px;max-height:none;flex:1 1 auto}
+          .builder-image-pair{flex-direction:column}
         }
+        .builder-image-pair{display:flex;gap:12px;align-items:stretch}
+        .builder-image-pair-item{flex:1 1 0;min-width:0}
+        .builder-image-pair-item>div{margin-bottom:0;height:100%}
       `}</style>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 24px",borderBottom:`1px solid ${T.cb}`,gap:12,flexWrap:"wrap"}}>
         <button onClick={onBack} style={{background:"none",border:"none",color:T.mut,cursor:"pointer",fontFamily:font,fontSize:14}}>← Back</button>
@@ -916,8 +984,17 @@ function Builder({triviaName,onTriviaNameChange,cover,setCover,rounds,setRounds,
           )}
           {locked&&<div style={{fontSize:11,color:T.mut,marginTop:4}}>Read-only premade trivia</div>}
         </div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end",alignItems:"center"}}>
           {locked&&onDuplicate&&<Btn onClick={onDuplicate} variant="ghost" style={{fontSize:13,padding:"10px 16px"}}>Duplicate & Edit</Btn>}
+          {!locked&&onSave&&(
+            <Btn
+              onClick={()=>{onSave();setSaveFlash(true);setTimeout(()=>setSaveFlash(false),1500)}}
+              variant="ghost"
+              style={{fontSize:13,padding:"10px 16px",minWidth:72}}
+            >
+              {saveFlash?"✓ Saved":"Save"}
+            </Btn>
+          )}
           {!locked&&onStartHost&&<Btn onClick={onStartHost} variant="gold" style={{fontSize:13,padding:"10px 20px"}}>▶ Host This</Btn>}
         </div>
       </div>
@@ -963,6 +1040,23 @@ function Builder({triviaName,onTriviaNameChange,cover,setCover,rounds,setRounds,
                 <div style={{flex:1,paddingTop:18,fontSize:12,color:T.mut,lineHeight:1.5}}>Tip: open your OS emoji picker (Win+. on Windows, ⌃⌘Space on Mac) and paste any emoji.</div>
               </div>
               <ImagePicker label="Cover image / GIF" value={cover.image||""} onChange={v=>updateCover({image:v})}/>
+              {!locked&&(
+                <label style={{
+                  display:"flex",alignItems:"flex-start",gap:10,marginTop:14,padding:"12px 14px",
+                  borderRadius:12,background:"#0d0d25",border:`1px solid ${T.cb}`,cursor:"pointer",
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={albieEnabled!==false}
+                    onChange={e=>onAlbieEnabledChange?.(e.target.checked)}
+                    style={{marginTop:3,accentColor:T.acc,flexShrink:0}}
+                  />
+                  <span>
+                    <span style={{display:"block",fontSize:13,fontWeight:600,color:T.txt,marginBottom:4}}>🐶 Enable Albie minigame</span>
+                    <span style={{display:"block",fontSize:12,color:T.mut,lineHeight:1.5}}>Players can feed, pet, and play with Albie on their phones during the game.</span>
+                  </span>
+                </label>
+              )}
             </div>
           </>):round&&(<>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
@@ -1056,13 +1150,17 @@ function Builder({triviaName,onTriviaNameChange,cover,setCover,rounds,setRounds,
                       </div>
                     )}
 
-                    {q.type!=="music"&&<div style={{marginBottom:10}}><label style={{fontSize:11,color:T.mut,display:"block",marginBottom:4}}>Hint (optional)</label><Inp value={q.hint||""} onChange={v=>updateQ(qi,{hint:v})} placeholder="Optional hint..."/></div>}
-
                     {/* Images (optional) */}
                     <div style={{marginTop:14,paddingTop:14,borderTop:`1px solid ${T.cb}`}}>
                       <div style={{fontSize:12,fontWeight:700,color:T.acc,marginBottom:8}}>🖼 Images (optional)</div>
-                      <ImagePicker label="Question slide image / GIF" value={q.image||""} onChange={v=>updateQ(qi,{image:v})}/>
-                      <ImagePicker label="Answer slide image / GIF" value={q.answerImage||""} onChange={v=>updateQ(qi,{answerImage:v})}/>
+                      <div className="builder-image-pair">
+                        <div className="builder-image-pair-item">
+                          <ImagePicker label="Question slide image / GIF" value={q.image||""} onChange={v=>updateQ(qi,{image:v})}/>
+                        </div>
+                        <div className="builder-image-pair-item">
+                          <ImagePicker label="Answer slide image / GIF" value={q.answerImage||""} onChange={v=>updateQ(qi,{answerImage:v})}/>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1080,7 +1178,7 @@ function Builder({triviaName,onTriviaNameChange,cover,setCover,rounds,setRounds,
 // ═══════════════════════════════════════════
 //  HOST LOBBY
 // ═══════════════════════════════════════════
-function HostLobby({triviaName,cover,rounds,gameCode,players,onStart,onBack}){
+function HostLobby({triviaName,cover,rounds,gameCode,players,onStart,onBack,isPremadeBachelorette=false}){
   const totalPts=rounds.reduce((s,r)=>s+r.questions.reduce((ss,q)=>ss+maxPoints(q,r),0),0);
   const totalQ=rounds.reduce((s,r)=>s+r.questions.length,0);
   const url=gameUrl(gameCode);
@@ -1098,7 +1196,7 @@ function HostLobby({triviaName,cover,rounds,gameCode,players,onStart,onBack}){
       <button onClick={onBack} style={{position:"absolute",top:20,left:20,background:"none",border:"none",color:T.mut,cursor:"pointer",fontFamily:font}}>← Back</button>
       <div style={{fontSize:48,marginBottom:8}}>{cover?.emoji||"🎮"}</div>
       <h2 style={{fontFamily:dFont,fontSize:32,margin:"0 0 4px"}}><GT>{triviaName||cover?.title||"Game Lobby"}</GT></h2>
-      {cover?.subtitle&&<p style={{color:T.mut,fontSize:14,margin:"0 0 8px"}}>{cover.subtitle}</p>}
+      {cover?.subtitle&&!isPremadeBachelorette&&<p style={{color:T.mut,fontSize:14,margin:"0 0 8px"}}>{cover.subtitle}</p>}
       <p style={{color:T.mut,fontSize:14,marginBottom:24}}>{rounds.length} rounds · {totalQ} questions · {totalPts} total pts</p>
 
       {/* Join section: QR + code + URL */}
@@ -1339,6 +1437,14 @@ function AlbieActions({gameCode,playerName,avatar}){
 const ERIC_ENABLED=true;
 const ERIC_ROUND_IDX=[2,3]; // 0-based: round 3 music, round 4 romcom
 function isEricRound(roundIdx){return roundIdx!==undefined&&roundIdx!==null&&ERIC_ROUND_IDX.includes(roundIdx)}
+function getPetMinigameFlags({isPremadeBachelorette,albieEnabled,petRoundIdx}){
+  if(petRoundIdx===undefined||petRoundIdx===null)return{showEric:false,showAlbie:false};
+  const showEric=ERIC_ENABLED&&isPremadeBachelorette&&isEricRound(petRoundIdx);
+  const showAlbie=ALBIE_ENABLED&&albieEnabled!==false&&(
+    isPremadeBachelorette?!isEricRound(petRoundIdx):true
+  );
+  return{showEric,showAlbie};
+}
 
 const ERIC_IMGS={
   neutral:"/eric/ericneutral.png",
@@ -1607,7 +1713,7 @@ function SlideNavModal({slides,slideIndex,onJump,onClose}){
 // ═══════════════════════════════════════════
 //  HOST PRESENTATION — two-click answer reveal
 // ═══════════════════════════════════════════
-function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideIndex,onEnd}){
+function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideIndex,onEnd,isPremadeBachelorette=false,albieEnabled=true}){
   const[showConfetti,setShowConfetti]=useState(false);
   const[answerRevealed,setAnswerRevealed]=useState(false);
   const[resultsRevealed,setResultsRevealed]=useState(false);
@@ -1739,8 +1845,7 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
   const hasYTQuestion=slide.type==="question"&&musicYtId;
   const hasYTAnswer=slide.type==="answer"&&musicYtId;
   const petRoundIdx=slide.roundIdx;
-  const showEricHost=ERIC_ENABLED&&petRoundIdx!==undefined&&isEricRound(petRoundIdx);
-  const showAlbieHost=ALBIE_ENABLED&&petRoundIdx!==undefined&&!showEricHost;
+  const{showEric:showEricHost,showAlbie:showAlbieHost}=getPetMinigameFlags({isPremadeBachelorette,albieEnabled,petRoundIdx});
 
   return(
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:font,color:T.txt,position:"relative",overflow:"hidden"}}>
@@ -1852,7 +1957,6 @@ function HostPresentation({cover,rounds,gameCode,players,slideIndex,setSlideInde
             </div>
             <h2 style={{fontFamily:dFont,fontSize:"clamp(22px,3.6vw,38px)",lineHeight:1.3,margin:"0 0 24px",fontWeight:400}}>{slide.question.text}</h2>
             {slide.question.image&&<div style={{display:"flex",justifyContent:"center",marginBottom:16}}><img src={slide.question.image} alt="" style={{maxWidth:"min(560px,90%)",maxHeight:340,objectFit:"contain",borderRadius:16,border:`1px solid ${T.cb}`,boxShadow:"0 4px 30px #00000055"}}/></div>}
-            {slide.question.hint&&!hasYTQuestion&&<p style={{color:T.pink,fontSize:16,fontStyle:"italic"}}>💡 {slide.question.hint}</p>}
             {hasYTQuestion&&<div style={{marginTop:8,marginBottom:16,display:"flex",justifyContent:"center"}}><YTPlayer key={`q-${slide.question.id}`} videoId={musicYtId} start={slide.question.ytStart} end={slide.question.ytEnd}/></div>}
             {slide.question.type==="choice"&&slide.question.options&&(
               <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap",marginTop:24}}>
@@ -2216,8 +2320,11 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
   const hostShowingPet=!!gameState;
   const petRoundIdx=gameState?.roundIdx;
   const showPetBar=hostShowingPet&&petRoundIdx!==undefined&&!(phase==="question"&&!already);
-  const showEric=ERIC_ENABLED&&showPetBar&&isEricRound(petRoundIdx);
-  const showAlbie=ALBIE_ENABLED&&showPetBar&&!showEric;
+  const isPremadeBachelorette=gameData?.isPremadeBachelorette===true;
+  const albieEnabled=gameData?.albieEnabled!==false;
+  const{showEric:showEricPet,showAlbie:showAlbiePet}=getPetMinigameFlags({isPremadeBachelorette,albieEnabled,petRoundIdx});
+  const showEric=showPetBar&&showEricPet;
+  const showAlbie=showPetBar&&showAlbiePet;
 
   return(
     <div className="player-game-shell" style={{
@@ -2280,7 +2387,6 @@ function PlayerGame({gameCode,playerName,playerId,initialGameData,onLeave}){
             <div style={{...cSty,marginBottom:16}}>
               <p style={{fontSize:16,lineHeight:1.6,margin:0,color:T.txt}}>{currentQ.text}</p>
               {currentQ.image&&<div style={{display:"flex",justifyContent:"center",marginTop:12}}><img src={currentQ.image} alt="" style={{maxWidth:"100%",maxHeight:240,objectFit:"contain",borderRadius:10}}/></div>}
-              {currentQ.hint&&<p style={{fontSize:13,color:T.pink,marginTop:8,marginBottom:0}}>💡 {currentQ.hint}</p>}
             </div>
             {already?(
               <div style={{textAlign:"center",padding:"20px 18px",borderRadius:14,background:`${T.acc}11`,border:`1px solid ${T.acc}33`}}>
@@ -2405,10 +2511,13 @@ export default function TriviaApp(){
   const[hostTriviaName,setHostTriviaName]=useState("");
   const[hostCover,setHostCover]=useState(DEFAULT_COVER);
   const[hostRounds,setHostRounds]=useState(PRELOADED_ROUNDS);
+  const[hostIsPremadeBachelorette,setHostIsPremadeBachelorette]=useState(false);
+  const[hostAlbieEnabled,setHostAlbieEnabled]=useState(true);
   const[editTriviaId,setEditTriviaId]=useState(null);
   const[editName,setEditName]=useState("");
   const[editCover,setEditCover]=useState(DEFAULT_COVER);
   const[editRounds,setEditRounds]=useState([]);
+  const[editAlbieEnabled,setEditAlbieEnabled]=useState(true);
   const[builderReadOnly,setBuilderReadOnly]=useState(false);
   const[gameCode,setGameCode]=useState("");
   const[players,setPlayers]=useState([]);
@@ -2425,6 +2534,7 @@ export default function TriviaApp(){
     setEditName(trivia.name||"Untitled Trivia");
     setEditCover(trivia.cover||DEFAULT_COVER);
     setEditRounds(trivia.rounds||[]);
+    setEditAlbieEnabled(trivia.albieEnabled!==false);
     setBuilderReadOnly(false);
     setScreen("builder");
   }
@@ -2456,16 +2566,38 @@ export default function TriviaApp(){
     persistUserTrivias(next);
     setUserTrivias(next);
   }
+  function saveCurrentTrivia(){
+    if(!editTriviaId||builderReadOnly)return;
+    setUserTrivias(prev=>{
+      const existing=prev.find(t=>t.id===editTriviaId);
+      if(!existing)return prev;
+      const updated={
+        ...existing,
+        name:editName||"Untitled Trivia",
+        cover:editCover,
+        rounds:editRounds,
+        albieEnabled:editAlbieEnabled,
+        updatedAt:Date.now(),
+      };
+      const next=prev.map(t=>t.id===editTriviaId?updated:t);
+      persistUserTrivias(next);
+      return next;
+    });
+  }
   function startHostWithPack(pack){
     const cover=pack.cover||DEFAULT_COVER;
     const rounds=pack.rounds||[];
     const name=pack.name||cover.title||"Trivia Night";
+    const isPremadeBachelorette=isPremadeBachelorettePack(pack);
+    const albieEnabled=isPremadeBachelorette?true:pack.albieEnabled!==false;
     setHostTriviaName(name);
     setHostCover(cover);
     setHostRounds(rounds);
+    setHostIsPremadeBachelorette(isPremadeBachelorette);
+    setHostAlbieEnabled(albieEnabled);
     const c=genCode();
     setGameCode(c);setPlayers([]);setSlideIndex(0);
-    storageSet(`game:${c}:host`,{cover,rounds,triviaName:name},true);
+    storageSet(`game:${c}:host`,{cover,rounds,triviaName:name,isPremadeBachelorette,albieEnabled},true);
     storageSet(`game:${c}:overrides`,{},true);
     lsSet(SESSION_HOST_KEY(c),{slideIndex:0});
     pushUrl(`/${c}`);
@@ -2487,7 +2619,7 @@ export default function TriviaApp(){
             if(s.cover&&typeof s.cover==="object") cover={...DEFAULT_COVER,...s.cover};
           }
           if(rounds.length>0){
-            trivias=[{id:genId(),name:"My Trivia",cover,rounds,createdAt:Date.now(),updatedAt:Date.now()}];
+            trivias=[{id:genId(),name:"My Trivia",cover,rounds,albieEnabled:true,createdAt:Date.now(),updatedAt:Date.now()}];
             persistUserTrivias(trivias);
           }
         }
@@ -2504,6 +2636,8 @@ export default function TriviaApp(){
           if(gameData.cover) setHostCover({...DEFAULT_COVER,...gameData.cover});
           if(Array.isArray(gameData.rounds)) setHostRounds(gameData.rounds);
           setHostTriviaName(gameData.triviaName||gameData.cover?.title||"Trivia Night");
+          setHostIsPremadeBachelorette(gameData.isPremadeBachelorette===true);
+          setHostAlbieEnabled(gameData.albieEnabled!==false);
           setGameCode(pathCode);
           setSlideIndex(Number.isFinite(hostSess.slideIndex)?hostSess.slideIndex:0);
           const liveState=await storageGetWithTimeout(`game:${pathCode}:state`);
@@ -2539,13 +2673,14 @@ export default function TriviaApp(){
         name:editName||"Untitled Trivia",
         cover:editCover,
         rounds:editRounds,
+        albieEnabled:editAlbieEnabled,
         updatedAt:Date.now(),
       };
       const next=prev.map(t=>t.id===editTriviaId?updated:t);
       persistUserTrivias(next);
       return next;
     });
-  },[editName,editCover,editRounds,screen,builderReadOnly,editTriviaId,libraryLoaded]);
+  },[editName,editCover,editRounds,editAlbieEnabled,screen,builderReadOnly,editTriviaId,libraryLoaded]);
 
   // Persist host's slide position so they can refresh / rejoin mid-game
   useEffect(()=>{
@@ -2650,13 +2785,16 @@ export default function TriviaApp(){
     setCover={setEditCover}
     rounds={editRounds}
     setRounds={setEditRounds}
+    albieEnabled={editAlbieEnabled}
+    onAlbieEnabledChange={setEditAlbieEnabled}
     readOnly={builderReadOnly}
     onBack={()=>setScreen(builderReadOnly?"premade":"builder-hub")}
-    onStartHost={builderReadOnly?undefined:()=>startHostWithPack({name:editName,cover:editCover,rounds:editRounds})}
+    onSave={builderReadOnly?undefined:saveCurrentTrivia}
+    onStartHost={builderReadOnly?undefined:()=>startHostWithPack({id:editTriviaId,name:editName,cover:editCover,rounds:editRounds,albieEnabled:editAlbieEnabled})}
     onDuplicate={builderReadOnly?()=>duplicateAndEdit(getPremadeBachelorette()):undefined}
   />;
-  if(screen==="host-lobby")return <HostLobby triviaName={hostTriviaName} cover={hostCover} rounds={hostRounds} gameCode={gameCode} players={players} onStart={startGame} onBack={backHomeFromLobby}/>;
-  if(screen==="host-game")return <HostPresentation cover={hostCover} rounds={hostRounds} gameCode={gameCode} players={players} slideIndex={slideIndex} setSlideIndex={setSlideIndex} onEnd={endGame}/>;
+  if(screen==="host-lobby")return <HostLobby triviaName={hostTriviaName} cover={hostCover} rounds={hostRounds} gameCode={gameCode} players={players} onStart={startGame} onBack={backHomeFromLobby} isPremadeBachelorette={hostIsPremadeBachelorette}/>;
+  if(screen==="host-game")return <HostPresentation cover={hostCover} rounds={hostRounds} gameCode={gameCode} players={players} slideIndex={slideIndex} setSlideIndex={setSlideIndex} onEnd={endGame} isPremadeBachelorette={hostIsPremadeBachelorette} albieEnabled={hostAlbieEnabled}/>;
   if(screen==="player-join")return <PlayerJoin prefillCode={joinPrefillCode} onJoin={handlePlayerJoin} onBack={backHomeFromJoin}/>;
   if(screen==="player-game")return <PlayerGame gameCode={playerGameCode} playerName={playerName} playerId={playerId} initialGameData={playerGameData} onLeave={handlePlayerLeave}/>;
   return <HomeScreen onNavigate={()=>setScreen("home")}/>;
