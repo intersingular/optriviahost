@@ -4,6 +4,7 @@ import { ref, set, get } from "firebase/database";
 import { ref as sref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import QRCode from "qrcode";
 import { db, storage } from "./firebase";
+import BACHELORETTE_BUNDLED_MEDIA from "./data/bachelorette-media.json";
 
 /* ═══════════════════════════════════════════
    ALINA'S TRIVIA — Full Game Platform
@@ -211,8 +212,128 @@ const DEFAULT_COVER={title:"TriviaHost",subtitle:"",emoji:"🎉",image:""};
 const BACHELORETTE_COVER={title:"Bachelorette Trivia Night",subtitle:"Eric & Alina's original",emoji:"💍",image:""};
 const PREMADE_BACHELORETTE_ID="premade-bachelorette";
 const LIBRARY_KEY="triviahost:library";
+const PREMADE_MEDIA_CACHE_KEY="triviahost:premade-bachelorette-media";
 
 function deepClone(v){return JSON.parse(JSON.stringify(v))}
+function isBacheloretteStructure(rounds){
+  if(!rounds||rounds.length!==PRELOADED_ROUNDS.length)return false;
+  for(let i=0;i<PRELOADED_ROUNDS.length;i++){
+    const r=rounds[i],base=PRELOADED_ROUNDS[i];
+    if(r.name!==base.name)return false;
+    const qs=r.questions||[],baseQs=base.questions||[];
+    if(qs.length!==baseQs.length)return false;
+    for(let j=0;j<baseQs.length;j++){
+      if(qs[j].id!==baseQs[j].id)return false;
+    }
+  }
+  return true;
+}
+function extractBacheloretteMediaOverlay(source){
+  if(!source)return null;
+  const rounds=Array.isArray(source)?source:source.rounds;
+  const cover=Array.isArray(source)?null:source.cover;
+  if(!rounds||!isBacheloretteStructure(rounds))return null;
+  return{
+    cover:cover?.image?{image:cover.image}:{},
+    rounds:rounds.map((r,roundIdx)=>({
+      roundIdx,
+      image:r.image||"",
+      questions:(r.questions||[]).map(q=>{
+        const item={id:q.id};
+        if(q.image)item.image=q.image;
+        if(q.answerImage)item.answerImage=q.answerImage;
+        if(q.ytUrl){
+          item.ytUrl=q.ytUrl;
+          item.ytStart=q.ytStart||"";
+          item.ytEnd=q.ytEnd||"";
+          item.ytAnswerStart=q.ytAnswerStart||"";
+        }
+        return item;
+      }),
+    })),
+  };
+}
+function mediaOverlayHasContent(overlay){
+  if(overlay?.cover?.image)return true;
+  for(const r of overlay?.rounds||[]){
+    if(r.image)return true;
+    for(const q of r.questions||[]){
+      if(q.image||q.answerImage||q.ytUrl)return true;
+    }
+  }
+  return false;
+}
+function mergeMediaOverlays(...overlays){
+  const result={cover:{},rounds:[]};
+  for(const overlay of overlays){
+    if(!overlay)continue;
+    if(overlay.cover?.image)result.cover.image=overlay.cover.image;
+    for(const r of overlay.rounds||[]){
+      if(!result.rounds[r.roundIdx])result.rounds[r.roundIdx]={roundIdx:r.roundIdx,image:"",questions:[]};
+      const target=result.rounds[r.roundIdx];
+      if(r.image)target.image=r.image;
+      const byId=Object.fromEntries((target.questions||[]).map(q=>[q.id,q]));
+      for(const q of r.questions||[]){
+        const merged={...(byId[q.id]||{id:q.id})};
+        for(const key of ["image","answerImage","ytUrl","ytStart","ytEnd","ytAnswerStart"]){
+          if(q[key])merged[key]=q[key];
+        }
+        byId[q.id]=merged;
+      }
+      target.questions=Object.values(byId);
+    }
+  }
+  return result;
+}
+function loadPremadeMediaCache(){return lsGet(PREMADE_MEDIA_CACHE_KEY)}
+function savePremadeMediaCache(overlay){
+  if(mediaOverlayHasContent(overlay))lsSet(PREMADE_MEDIA_CACHE_KEY,overlay);
+}
+function applyBacheloretteMediaOverlay(baseRounds,baseCover,overlay){
+  const cover={...baseCover};
+  if(overlay?.cover?.image)cover.image=overlay.cover.image;
+  const rounds=baseRounds.map((r,ri)=>{
+    const sourceRound=overlay?.rounds?.find(x=>x.roundIdx===ri)||overlay?.rounds?.[ri];
+    const round={...r,questions:(r.questions||[]).map(q=>({...q}))};
+    if(sourceRound?.image)round.image=sourceRound.image;
+    if(sourceRound?.questions?.length){
+      const byId=Object.fromEntries(sourceRound.questions.map(q=>[q.id,q]));
+      round.questions=round.questions.map(q=>{
+        const media=byId[q.id];
+        if(!media)return q;
+        return{
+          ...q,
+          ...(media.image?{image:media.image}:{}),
+          ...(media.answerImage?{answerImage:media.answerImage}:{}),
+          ...(media.ytUrl?{
+            ytUrl:media.ytUrl,
+            ytStart:media.ytStart||"",
+            ytEnd:media.ytEnd||"",
+            ytAnswerStart:media.ytAnswerStart||"",
+          }:{}),
+        };
+      });
+    }
+    return round;
+  });
+  return{cover,rounds};
+}
+let _premadeMediaOverlay=null;
+function resolveBacheloretteMediaOverlay(userTrivias,firebaseDraft){
+  const sources=[BACHELORETTE_BUNDLED_MEDIA,loadPremadeMediaCache()];
+  for(const trivia of userTrivias||[]){
+    const overlay=extractBacheloretteMediaOverlay(trivia);
+    if(overlay)sources.push(overlay);
+  }
+  const draftOverlay=extractBacheloretteMediaOverlay(firebaseDraft);
+  if(draftOverlay)sources.push(draftOverlay);
+  const merged=mergeMediaOverlays(...sources);
+  if(mediaOverlayHasContent(merged))savePremadeMediaCache(merged);
+  return merged;
+}
+function refreshPremadeMediaOverlay(userTrivias,firebaseDraft){
+  _premadeMediaOverlay=resolveBacheloretteMediaOverlay(userTrivias,firebaseDraft);
+}
 function cloneRoundIds(rounds){
   return rounds.map(r=>({
     ...deepClone(r),
@@ -221,12 +342,14 @@ function cloneRoundIds(rounds){
   }));
 }
 function getPremadeBachelorette(){
+  const overlay=_premadeMediaOverlay||resolveBacheloretteMediaOverlay(loadUserTrivias(),null);
+  const{cover,rounds}=applyBacheloretteMediaOverlay(PRELOADED_ROUNDS,BACHELORETTE_COVER,overlay);
   return{
     id:PREMADE_BACHELORETTE_ID,
     name:"Bachelorette Original",
     description:"The bachelorette original",
-    cover:BACHELORETTE_COVER,
-    rounds:PRELOADED_ROUNDS,
+    cover,
+    rounds,
     premade:true,
     locked:true,
   };
@@ -2608,22 +2731,26 @@ export default function TriviaApp(){
   useEffect(()=>{(async()=>{
     try{
       let trivias=loadUserTrivias();
+      let firebaseDraft=null;
       if(trivias.length===0){
-        const s=await storageGetWithTimeout("trivia:draft");
-        if(s){
+        firebaseDraft=await storageGetWithTimeout("trivia:draft");
+        if(firebaseDraft){
           let cover=DEFAULT_COVER,rounds=[];
-          if(Array.isArray(s)){
-            rounds=s;
-          }else if(typeof s==="object"){
-            if(Array.isArray(s.rounds)&&s.rounds.length>0) rounds=s.rounds;
-            if(s.cover&&typeof s.cover==="object") cover={...DEFAULT_COVER,...s.cover};
+          if(Array.isArray(firebaseDraft)){
+            rounds=firebaseDraft;
+          }else if(typeof firebaseDraft==="object"){
+            if(Array.isArray(firebaseDraft.rounds)&&firebaseDraft.rounds.length>0) rounds=firebaseDraft.rounds;
+            if(firebaseDraft.cover&&typeof firebaseDraft.cover==="object") cover={...DEFAULT_COVER,...firebaseDraft.cover};
           }
           if(rounds.length>0){
             trivias=[{id:genId(),name:"My Trivia",cover,rounds,albieEnabled:true,createdAt:Date.now(),updatedAt:Date.now()}];
             persistUserTrivias(trivias);
           }
         }
+      }else{
+        firebaseDraft=await storageGetWithTimeout("trivia:draft");
       }
+      refreshPremadeMediaOverlay(trivias,firebaseDraft);
       setUserTrivias(trivias);
       setLibraryLoaded(true);
 
@@ -2661,6 +2788,12 @@ export default function TriviaApp(){
       setRejoinChecked(true);
     }
   })()},[]);
+
+  // Keep premade media in sync when the local library changes.
+  useEffect(()=>{
+    if(!libraryLoaded)return;
+    storageGetWithTimeout("trivia:draft").then(draft=>refreshPremadeMediaOverlay(userTrivias,draft));
+  },[libraryLoaded,userTrivias]);
 
   // Auto-save the trivia currently open in the builder (local browser only).
   useEffect(()=>{

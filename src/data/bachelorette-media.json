@@ -1,0 +1,22 @@
+{
+  "cover": {
+    "image": "https://firebasestorage.googleapis.com/v0/b/op-triviahost.firebasestorage.app/o/trivia-images%2F1779322211034-alinacoverslide.png?alt=media"
+  },
+  "rounds": [
+    {
+      "roundIdx": 0,
+      "questions": [
+        { "id": "r1q2", "image": "https://firebasestorage.googleapis.com/v0/b/op-triviahost.firebasestorage.app/o/trivia-images%2F1779322224748-alinacrombie.png?alt=media" },
+        { "id": "r1q5", "image": "https://firebasestorage.googleapis.com/v0/b/op-triviahost.firebasestorage.app/o/trivia-images%2F1779322254778-abgs.png?alt=media" },
+        { "id": "r1q10", "image": "https://firebasestorage.googleapis.com/v0/b/op-triviahost.firebasestorage.app/o/trivia-images%2F1779322308211-anthurium.png?alt=media" }
+      ]
+    },
+    {
+      "roundIdx": 1,
+      "questions": [
+        { "id": "r2q2", "image": "https://firebasestorage.googleapis.com/v0/b/op-triviahost.firebasestorage.app/o/trivia-images%2F1779322318516-kimandkris.png?alt=media" },
+        { "id": "r2q10", "image": "https://firebasestorage.googleapis.com/v0/b/op-triviahost.firebasestorage.app/o/trivia-images%2F1779322506649-longveil.png?alt=media" }
+      ]
+    }
+  ]
+}
